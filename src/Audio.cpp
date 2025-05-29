@@ -5412,12 +5412,12 @@ void Audio::IIR_calculateCoefficients(int8_t G0, int8_t G1, int8_t G2) { // Infi
 
     // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
-    if(G0 < -40) G0 = -40; // -40dB -> Vin*0.01
-    if(G0 > 6) G0 = 6;     // +6dB -> Vin*2
-    if(G1 < -40) G1 = -40;
-    if(G1 > 6) G1 = 6;
-    if(G2 < -40) G2 = -40;
-    if(G2 > 6) G2 = 6;
+    if(G0 < -14) G0 = -14; // -40dB -> Vin*0.01
+    if(G0 > 16) G0 = 16;     // +6dB -> Vin*2
+    if(G1 < -14) G1 = -14;
+    if(G1 > 16) G1 = 16;
+    if(G2 < -14) G2 = -14;
+    if(G2 > 16) G2 = 16;
 
     const float FcLS = 500;    // Frequency LowShelf[Hz]
     const float FcPKEQ = 3000; // Frequency PeakEQ[Hz]
@@ -5899,7 +5899,7 @@ uint16_t Audio::readMetadata(uint16_t maxBytes, bool first) {
         return res;
     } // metalen is 0
     if(metalen < m_chbufSize) {
-        uint16_t a = _client->readBytes(&m_chbuf[pos_ml], min((uint16_t)(metalen - pos_ml), (uint16_t)(maxBytes)));
+        uint16_t a = _client->readBytes(&m_chbuf[pos_ml], min((uint16_t)(metalen - pos_ml), (uint16_t)(maxBytes - 1)));
         res += a;
         pos_ml += a;
     }
