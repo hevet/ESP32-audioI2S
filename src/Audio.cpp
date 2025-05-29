@@ -1182,7 +1182,27 @@ void Audio::htmlToUTF8(char* str) { // convert HTML to UTF-8
         {"ndash", 0x2013}, // –
         {"mdash", 0x2014}, // —
         {"sect",  0x00A7}, // §
-        {"para",  0x00B6}  // ¶
+        {"para",  0x00B6},  // ¶
+        {"agrave", 0x00E0}, // à
+        {"acirc",  0x00E2}, // â
+        {"auml",   0x00E4}, // ä
+        {"ccedil", 0x00E7}, // ç
+        {"eacute", 0x00E9}, // é
+        {"egrave", 0x00E8}, // è
+        {"ecirc",  0x00EA}, // ê
+        {"euml",   0x00EB}, // ë
+        {"icirc",  0x00EE}, // î
+        {"iuml",   0x00EF}, // ï
+        {"ocirc",  0x00F4}, // ô
+        {"ouml",   0x00F6}, // ö
+        {"ugrave", 0x00F9}, // ù
+        {"ucirc",  0x00FB}, // û
+        {"uuml",   0x00FC}, // ü
+        {"yuml",   0x00FF}, // ÿ
+        {"szlig",  0x00DF}, // ß
+        {"Auml",   0x00C4}, // Ä
+        {"Ouml",   0x00D6}, // Ö
+        {"Uuml",   0x00DC}  // Ü
     };
 
     // --- EntityMap Lookup ---
