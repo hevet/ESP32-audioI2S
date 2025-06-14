@@ -3,8 +3,8 @@
     audio.cpp
 
     Created on: Oct 28.2018                                                                                                  */char audioI2SVers[] ="\
-    Version 3.3.1a                                                                                                                                ";
-/*  Updated on: Jun 12.2025
+    Version 3.3.2a                                                                                                                                ";
+/*  Updated on: Jun 14.2025
 
     Author: Wolle (schreibfaul1)
     Audio library for ESP32, ESP32-S3 or ESP32-P4
@@ -321,6 +321,7 @@ void Audio::setDefaults() {
     m_M4A_objectType = 0;
     m_M4A_sampleRate = 0;
     m_sumBytesDecoded = 0;
+    m_opus_mode = 0;
     m_vuLeft = m_vuRight = 0; // #835
     std::fill(std::begin(m_inputHistory), std::end(m_inputHistory), 0);
     if(m_f_reset_m3u8Codec){m_m3u8Codec = CODEC_AAC;} // reset to default
@@ -455,6 +456,7 @@ bool Audio::openai_speech(const String& api_key, const String& model, const Stri
         if (response_format == "aac") m_expectedCodec  = CODEC_AAC;
         if (response_format == "flac") m_expectedCodec  = CODEC_FLAC;
         m_dataMode = HTTP_RESPONSE_HEADER;
+        m_f_tts = true;
     } else {
         log_info("Request %s failed!", host);
     }
@@ -3467,7 +3469,7 @@ void Audio::processWebStream() {
     // if the buffer is often almost empty issue a warning - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     if(m_f_stream) {
         if(!m_f_allDataReceived) if(streamDetection(availableBytes)) return;
-        if(!f_clientIsConnected) {if(!m_f_allDataReceived) m_f_allDataReceived = true;} // connection closed
+        if(!f_clientIsConnected) {if(m_f_tts && !m_f_allDataReceived) m_f_allDataReceived = true;} // connection closed (OpenAi)
     }
 
     // buffer fill routine - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -4834,7 +4836,16 @@ int Audio::sendBytes(uint8_t* data, size_t len) {
                                 // log_i("---------------------------------------------------------------------------");
                                 if(audio_oggimage) audio_oggimage(audiofile, vec);
                             }
+
+                            if(m_opus_mode != OPUSgetMode()){
+                                m_opus_mode = OPUSgetMode();
+                                if(m_opus_mode == MODE_CELT_ONLY) log_info("Opus Mode: CELT_ONLY");
+                                if(m_opus_mode == MODE_HYBRID)    log_info("Opus Mode: HYBRID");
+                                if(m_opus_mode == MODE_SILK_ONLY) log_info("Opus Mode: SILK_ONLY");
+                                if(m_opus_mode == MODE_NONE)      log_info("Opus Mode: NONE");
+                            }
                             break;
+
         case CODEC_VORBIS:  if(m_decodeError == VORBIS_PARSE_OGG_DONE) return bytesDecoded; // nothing to play
                             m_validSamples = VORBISGetOutputSamps();
                             st = VORBISgetStreamTitle();
