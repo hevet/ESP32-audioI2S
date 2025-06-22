@@ -5926,7 +5926,7 @@ uint16_t Audio::readMetadata(uint16_t maxBytes, bool first) {
         return res;
     } // metalen is 0
     if(metalen < m_chbufSize) {
-        uint16_t a = _client->readBytes(&m_chbuf.get()[pos_ml], min((uint16_t)(metalen - pos_ml), (uint16_t)(maxBytes - 1)));
+        uint16_t a = _client->readBytes(&m_chbuf.get()[pos_ml], min((uint16_t)(metalen - pos_ml), (uint16_t)(maxBytes)));
         res += a;
         pos_ml += a;
     }
