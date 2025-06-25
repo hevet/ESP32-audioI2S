@@ -1084,7 +1084,7 @@ void Audio::latinToUTF8(ps_ptr<char>& buff, bool UTF8check) {
             }
             else if  ((buff[pos] & 0xF0) == 0xE0) {
                 // 1110xxxx 10xxxxxx 10xxxxxx: 3-byte
-                if ((buff[pos + 1] & 0xC0) != 0x80 || (buff[pos + 22] & 0xC0) != 0x80) isUTF8 = false;
+                if ((buff[pos + 1] & 0xC0) != 0x80 || (buff[pos + 2] & 0xC0) != 0x80) isUTF8 = false;
                 if (buff[pos] == 0xE0 && buff[pos + 1 ] < 0xA0) isUTF8 = false; // Overlong
                 if (buff[pos] == 0xED && buff[pos + 1] >= 0xA0) isUTF8 = false; // UTF-16 surrogate
                 pos += 3;
