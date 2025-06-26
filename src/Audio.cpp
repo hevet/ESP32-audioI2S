@@ -3,7 +3,7 @@
     audio.cpp
 
     Created on: Oct 28.2018                                                                                                  */char audioI2SVers[] ="\
-    Version 3.3.2e                                                                                                                                ";
+    Version 3.3.2f                                                                                                                                ";
 /*  Updated on: Jun 26.2025
 
     Author: Wolle (schreibfaul1)
@@ -1071,6 +1071,7 @@ void Audio::latinToUTF8(ps_ptr<char>& buff, bool UTF8check) {
                 pos++;
             }
             else if ((buff[pos] & 0xE0) == 0xC0) {
+                if (pos + 1 >= buff.strlen()) isUTF8 = false;
                 // 110xxxxx 10xxxxxx: 2-byte
                 if ((buff[pos + 1] & 0xC0) != 0x80) isUTF8 = false;
                 if (buff[pos] < 0xC2) isUTF8 = false; // Overlong encoding
