@@ -5852,7 +5852,7 @@ uint16_t Audio::readMetadata(uint16_t maxBytes, bool first) {
         m_metacount = m_metaint;
         return m_rmet.res;
     } // metalen is 0
-    uint16_t a = _client->readBytes(&buff[m_rmet.pos_ml], min((uint16_t)(m_rmet.metalen - m_rmet.pos_ml), (uint16_t)(maxBytes)));
+    uint16_t a = _client->readBytes(&buff[m_rmet.pos_ml], min((uint16_t)(m_rmet.metalen - m_rmet.pos_ml), (uint16_t)(maxBytes - 1)));
     m_rmet.res += a;
     m_rmet.pos_ml += a;
 
