@@ -3,8 +3,8 @@
     audio.cpp
 
     Created on: Oct 28.2018                                                                                                  */char audioI2SVers[] ="\
-    Version 3.3.2g                                                                                                                                ";
-/*  Updated on: Jun 29.2025
+    Version 3.3.2i                                                                                                                                ";
+/*  Updated on: Jul 01.2025
 
     Author: Wolle (schreibfaul1)
     Audio library for ESP32, ESP32-S3 or ESP32-P4
@@ -22,6 +22,16 @@
 #include "vorbis_decoder/vorbis_decoder.h"
 #include "psram_unique_ptr.hpp"
 
+#define ANSI_ESC_RESET          "\033[0m"
+#define ANSI_ESC_BLACK          "\033[30m"
+#define ANSI_ESC_RED            "\033[31m"
+#define ANSI_ESC_GREEN          "\033[32m"
+#define ANSI_ESC_YELLOW         "\033[33m"
+#define ANSI_ESC_BLUE           "\033[34m"
+#define ANSI_ESC_MAGENTA        "\033[35m"
+#define ANSI_ESC_CYAN           "\033[36m"
+#define ANSI_ESC_WHITE          "\033[37m"
+
 template <typename... Args>
 void AUDIO_INFO(const char* fmt, Args&&... args) {
     ps_ptr<char> result;
@@ -37,7 +47,7 @@ void AUDIO_INFO(const char* fmt, Args&&... args) {
     if(audio_info) audio_info(result.get());
     result.reset();
 }
-#define ANSI_ESC_RED "\033[31m"
+
 template <typename... Args>
 void AUDIO_ERROR_IMPL(const char* path, int line, const char* fmt, Args&&... args) {
     ps_ptr<char> result;
@@ -59,13 +69,13 @@ void AUDIO_ERROR_IMPL(const char* path, int line, const char* fmt, Args&&... arg
 
     // build a final string with file/line prefix
     ps_ptr<char> final;
-    int total_len = std::snprintf(nullptr, 0, "%s:%d:" ANSI_ESC_RED " %s", file.c_get(), line, dst);
+    int total_len = std::snprintf(nullptr, 0, "%s:%d:" ANSI_ESC_RED " %s" ANSI_ESC_RESET, file.c_get(), line, dst);
     if (total_len <= 0) return;
     final.alloc(total_len + 1, "final");
     char* dest = final.get();
     if (!dest) return;  // Or error treatment
     if(audio_info){
-        std::snprintf(dest, total_len + 1, "%s:%d:" ANSI_ESC_RED " %s", file.c_get(), line, dst);
+        std::snprintf(dest, total_len + 1, "%s:%d:" ANSI_ESC_RED " %s" ANSI_ESC_RESET, file.c_get(), line, dst);
         audio_info(final.get());
     }
     else{
@@ -646,7 +656,7 @@ bool Audio::connecttohost(const char* host, const char* user, const char* pwd) {
                        rqh.append("Pragma: no-cache\r\n");
                        rqh.append("Cache-Control: no-cache\r\n");
                        rqh.append("Accept:*/*\r\n");
-                       rqh.append("User-Agent: VLC/3.0.21 LibVLC/3.0.21 AppleWebKit/537.36 (KHTML, like Gecko) Mozilla/5.0 (X11; Linux x86_64)\r\n");
+                       rqh.append("User-Agent: VLC/3.0.21 LibVLC/3.0.21 AppleWebKit/537.36 (KHTML, like Gecko)\r\n");
     if(authLen > 0) {  rqh.append("Authorization: Basic ");
                        rqh.append(authorization.get());
                        rqh.append("\r\n"); }
@@ -3944,7 +3954,6 @@ bool Audio::parseHttpResponseHeader() { // this is the response to a GET / reque
                 log_w("responseHeaderline overflow");
             }
         } // inner while
-
         if(!pos) {
             vTaskDelay(5);
             continue;
@@ -4019,7 +4028,7 @@ bool Audio::parseHttpResponseHeader() { // this is the response to a GET / reque
             }
         }
         else if(rhl.starts_with_icase("connection:")) {
-            if(rhl.contains_with_icase("close")) {m_f_connectionClose = true;  AUDIO_ERROR("connection will be closed");} // ends after ogg last Page is set
+            if(rhl.contains_with_icase("close")) {m_f_connectionClose = true; /* AUDIO_ERROR("connection will be closed"); */} // ends after ogg last Page is set
         }
 
         else if(rhl.starts_with_icase("icy-genre:")) {
@@ -4756,7 +4765,7 @@ int Audio::sendBytes(uint8_t* data, size_t len) {
         return 1;
     }
     // status: bytesDecoded > 0 and m_decodeError >= 0
-    char* st = NULL;
+    const char* st = NULL;
     std::vector<uint32_t> vec;
     switch(m_codec) {
         case CODEC_WAV:     if(getBitsPerSample() == 16){
@@ -4968,28 +4977,7 @@ void Audio::printDecodeError(int r) {
         AUDIO_INFO("FLAC decode error %d : %s", r, e);
     }
     if(m_codec == CODEC_OPUS) {
-        switch(r) {
-            case ERR_OPUS_NONE: e = "NONE"; break;
-            case ERR_OPUS_CHANNELS_OUT_OF_RANGE: e = "UNKNOWN CHANNEL ASSIGNMENT"; break;
-            case ERR_OPUS_INVALID_SAMPLERATE: e = "SAMPLERATE IS NOT 48000Hz"; break;
-            case ERR_OPUS_EXTRA_CHANNELS_UNSUPPORTED: e = "EXTRA CHANNELS UNSUPPORTED"; break;
-            case ERR_OPUS_SILK_MODE_UNSUPPORTED: e = "SILK MODE UNSUPPORTED"; break;
-            case ERR_OPUS_HYBRID_MODE_UNSUPPORTED: e = "HYBRID MODE UNSUPPORTED"; break;
-            case ERR_OPUS_NARROW_BAND_UNSUPPORTED: e = "NARROW_BAND_UNSUPPORTED"; break;
-            case ERR_OPUS_WIDE_BAND_UNSUPPORTED: e = "WIDE_BAND_UNSUPPORTED"; break;
-            case ERR_OPUS_SUPER_WIDE_BAND_UNSUPPORTED: e = "SUPER_WIDE_BAND_UNSUPPORTED"; break;
-            case ERR_OPUS_CELT_BAD_ARG: e = "CELT_DECODER_BAD_ARG"; break;
-            case ERR_OPUS_CELT_INTERNAL_ERROR: e = "CELT DECODER INTERNAL ERROR"; break;
-            case ERR_OPUS_CELT_UNIMPLEMENTED: e = "CELT DECODER UNIMPLEMENTED ARG"; break;
-            case ERR_OPUS_CELT_ALLOC_FAIL: e = "CELT DECODER INIT ALLOC FAIL"; break;
-            case ERR_OPUS_CELT_UNKNOWN_REQUEST: e = "CELT_UNKNOWN_REQUEST FAIL"; break;
-            case ERR_OPUS_CELT_GET_MODE_REQUEST: e = "CELT_GET_MODE_REQUEST FAIL"; break;
-            case ERR_OPUS_CELT_CLEAR_REQUEST: e = "CELT_CLEAR_REAUEST_FAIL"; break;
-            case ERR_OPUS_CELT_SET_CHANNELS: e = "CELT_SET_CHANNELS_FAIL"; break;
-            case ERR_OPUS_CELT_END_BAND: e = "CELT_END_BAND_REQUEST_FAIL"; break;
-            case ERR_CELT_OPUS_INTERNAL_ERROR: e = "CELT_INTERNAL_ERROR"; break;
-            default: e = "ERR_UNKNOWN";
-        }
+        e = OPUSGetErrorMessage(r);
         AUDIO_INFO("OPUS decode error %d : %s", r, e);
     }
     if(m_codec == CODEC_VORBIS) {
