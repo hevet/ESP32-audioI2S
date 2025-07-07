@@ -5295,11 +5295,11 @@ void Audio::IIR_calculateCoefficients(int8_t G0, int8_t G1, int8_t G2) { // Infi
 
     // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
-    if(G0 < -14) G0 = -14; // -40dB -> Vin*0.01
+    if(G0 < -16) G0 = -16; // -40dB -> Vin*0.01
     if(G0 > 16) G0 = 16;     // +6dB -> Vin*2
-    if(G1 < -14) G1 = -14;
+    if(G1 < -16) G1 = -16;
     if(G1 > 16) G1 = 16;
-    if(G2 < -14) G2 = -14;
+    if(G2 < -16) G2 = -16;
     if(G2 > 16) G2 = 16;
 
     const float FcLS = 500;    // Frequency LowShelf[Hz]
