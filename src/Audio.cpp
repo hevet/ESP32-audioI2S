@@ -3,8 +3,8 @@
     audio.cpp
 
     Created on: Oct 28.2018                                                                                                  */char audioI2SVers[] ="\
-    Version 3.3.2l                                                                                                                                ";
-/*  Updated on: Jul 09.2025
+    Version 3.3.2o                                                                                                                                ";
+/*  Updated on: Jul 10.2025
 
     Author: Wolle (schreibfaul1)
     Audio library for ESP32, ESP32-S3 or ESP32-P4
@@ -512,6 +512,7 @@ bool Audio::openai_speech(const String& api_key, const String& model, const Stri
     if (res) {
         uint32_t dt = millis() - t;
         m_lastHost.assign(host.get());
+        m_currentHost.clone_from(host);
         AUDIO_INFO("%s has been established in %lu ms", m_f_ssl ? "SSL" : "Connection", (long unsigned int)dt);
         m_f_running = true;
     }
@@ -525,6 +526,7 @@ bool Audio::openai_speech(const String& api_key, const String& model, const Stri
         if (response_format == "opus") m_expectedCodec  = CODEC_OPUS;
         if (response_format == "aac") m_expectedCodec  = CODEC_AAC;
         if (response_format == "flac") m_expectedCodec  = CODEC_FLAC;
+
         m_dataMode = HTTP_RESPONSE_HEADER;
         m_f_tts = true;
     } else {
@@ -3380,8 +3382,8 @@ exit:
         m_codec = CODEC_NONE;
 
         if(afn.valid()) {
-            if(audio_eof_mp3) audio_eof_mp3(afn.get());
-            AUDIO_INFO("End of file \"%s\"", afn.get());
+            if(audio_eof_mp3) audio_eof_mp3(afn.c_get());
+            AUDIO_INFO("End of file \"%s\"", afn.c_get());
         }
         return;
     }
@@ -3470,8 +3472,8 @@ void Audio::processWebStream() {
     }
 
     if(m_f_eof) {
-        AUDIO_INFO("End of webstream: \"%s\"", m_lastHost.get());
-        if(audio_eof_stream) audio_eof_stream(m_lastHost.get());
+        AUDIO_INFO("End of webstream: \"%s\"", m_lastHost.c_get());
+        if(audio_eof_stream) audio_eof_stream(m_lastHost.c_get());
         stopSong();
     }
 }
@@ -3584,12 +3586,12 @@ void Audio::processWebFile() {
 
         stopSong();
         if(m_f_tts) {
-            AUDIO_INFO("End of speech \"%s\"", m_speechtxt.get());
-            if(audio_eof_speech) audio_eof_speech(m_speechtxt.get());
+            AUDIO_INFO("End of speech \"%s\"", m_speechtxt.c_get());
+            if(audio_eof_speech) audio_eof_speech(m_speechtxt.c_get());
         }
         else {
-            AUDIO_INFO("End of webstream: \"%s\"", m_lastHost.get());
-            if(audio_eof_stream) audio_eof_stream(m_lastHost.get());
+            AUDIO_INFO("End of webstream: \"%s\"", m_lastHost.c_get());
+            if(audio_eof_stream) audio_eof_stream(m_lastHost.c_get());
         }
         return;
     }
@@ -4754,7 +4756,7 @@ int Audio::sendBytes(uint8_t* data, size_t len) {
                                 m_validSamples = len;
                             }
                             break;
-        case CODEC_MP3:     m_validSamples = MP3GetOutputSamps() / getChannels();
+        case CODEC_MP3:     m_validSamples = MP3GetOutputSamps();
                             break;
         case CODEC_AAC:     m_validSamples = AACGetOutputSamps() / getChannels();
                             if(!m_sbyt.isPS && AACGetParametricStereo()){ // only change 0 -> 1
