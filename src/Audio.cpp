@@ -3,8 +3,8 @@
     audio.cpp
 
     Created on: Oct 28.2018                                                                                                  */char audioI2SVers[] ="\
-    Version 3.4.0a                                                                                                                                ";
-/*  Updated on: Jul 20.2025
+    Version 3.4.0b                                                                                                                                ";
+/*  Updated on: Jul 21.2025
 
     Author: Wolle (schreibfaul1)
     Audio library for ESP32, ESP32-S3 or ESP32-P4
@@ -2131,7 +2131,7 @@ int Audio::read_ID3_Header(uint8_t* data, size_t len) {
                     bytesWritten += m_audiofile.read((uint8_t*)syltBuff.get() + bytesWritten, m_ID3Hdr.SYLT.size);
                 }
                 m_audiofile.seek(pos);
-                uint8_t text_encoding = syltBuff[0];
+                m_ID3Hdr.SYLT.text_encoding = syltBuff[0];
                 memcpy(m_ID3Hdr.SYLT.lang, syltBuff.get() + 1, 3); m_ID3Hdr.SYLT.lang[3] = '\0';
                 AUDIO_INFO("Lyrics: text_encoding: %s, language: %s, size %i", m_ID3Hdr.SYLT.text_encoding == 0 ? "ASCII" : m_ID3Hdr.SYLT.text_encoding == 3 ? "UTF-8" : "?", m_ID3Hdr.SYLT.lang, m_ID3Hdr.SYLT.size);
                 m_ID3Hdr.SYLT.time_stamp_format =  syltBuff[4];
@@ -5034,6 +5034,13 @@ void Audio::computeAudioTime(uint16_t bytesDecoderIn, uint16_t bytesDecoderOut) 
             m_audioFileDuration = m_audioDataSize  / (getSampleRate() * getChannels());
             if(getBitsPerSample() == 16) m_audioFileDuration /= 2;
         }
+        if(m_codec == CODEC_MP3){
+            if(MP3GetAudioFileDuration() > 0){ // XING header present?
+                m_audioFileDuration = MP3GetAudioFileDuration();
+                m_cat.nominalBitRate  = MP3GetBitrate();
+                m_avr_bitrate = m_cat.nominalBitRate;
+            }
+        }
     }
 
     m_cat.sumBytesIn   += bytesDecoderIn;
@@ -5080,7 +5087,7 @@ void Audio::computeAudioTime(uint16_t bytesDecoderIn, uint16_t bytesDecoderOut) 
     if(m_ID3Hdr.SYLT.seen){
         //  log_i("%f", audioCurrentTime * 1000); // ms
         if(m_cat.syltIdx >= m_syltLines.size()) return;
-        if(audioCurrentTime * 1000 > m_syltTimeStamp[m_cat.syltIdx]){
+        if(m_audioCurrentTime * 1000 > m_syltTimeStamp[m_cat.syltIdx]){
         //  AUDIO_INFO(ANSI_ESC_CYAN "%s", m_syltLines[m_cat.syltIdx].c_get());
             if(audio_id3lyrics) audio_id3lyrics(m_syltLines[m_cat.syltIdx].c_get());
             m_cat.syltIdx++;
