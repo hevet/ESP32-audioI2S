@@ -102,7 +102,7 @@ class Audio {
         const char*           msg = nullptr;
         const char*           s = nullptr;
         event_t               e = (event_t)0; // event type
-        uint8_t               i2s_num = 0;
+        int32_t               i2s_num = 0;
         int32_t               arg1 = 0;
         int32_t               arg2 = 0;
         std::vector<uint32_t> vec = {}; // apic [pos, len, pos, len, pos, len, ....]
@@ -132,7 +132,7 @@ class Audio {
     uint8_t          getVolume();
     void             setMute(bool mute);
     bool             getMute();
-    uint8_t          getI2sPort();
+    int32_t          getI2sPort();
     uint32_t         getFileSize();
     uint32_t         getSampleRate();
     uint8_t          getBitsPerSample();
@@ -325,6 +325,8 @@ class Audio {
 
   public:
     struct audioSettings {
+        uint16_t DMA_DESC_NUM = 32;        // number of I2S DMA buffer
+        uint16_t DMA_FRAME_NUM = 256;      // number of frames in one DMA buffer
         uint16_t FREQ_LS_HZ = 500;         // IIR Filter, lowshelf
         uint16_t FREQ_PEAK_HZ = 3000;      // IIR Filter, peakingEQ
         uint16_t FREQ_HS_HZ = 6000;        // IIR Filter, highshelf
@@ -564,14 +566,14 @@ class Audio {
         // i.arg1 = extract_last_number(result.c_get());
         // i.i2s_num = instance.m_i2s_items.i2s_num;
         // audio_info_callback(i);
-        std::vector<uint32_t>v; // dummy
+        std::vector<uint32_t> v; // dummy
         v.push_back(0);
         instance.m_info_queue.msg.emplace_front(result);
         instance.m_info_queue.s.emplace_front(eventStr[e]);
         instance.m_info_queue.arg1.emplace_front(extract_last_number(result.c_get()));
         instance.m_info_queue.arg2.emplace_front(0);
         instance.m_info_queue.vec.emplace_front(v);
-        instance.m_info_queue.e.emplace_front((uint8_t) e);
+        instance.m_info_queue.e.emplace_front((uint8_t)e);
 
         result.reset();
         return true;
@@ -580,7 +582,7 @@ class Audio {
     static bool info(Audio& instance, event_t e, std::vector<uint32_t>& v) {
         if (!audio_info_callback) return false;
         std::lock_guard<std::mutex> lock(instance.mutex_info); // lock mutex
-        ps_ptr<char> apic;
+        ps_ptr<char>                apic;
         apic.assignf("APIC found at pos %lu", v[0]);
         // msg_t i;
         // i.msg = apic.c_get();
@@ -595,7 +597,7 @@ class Audio {
         instance.m_info_queue.arg1.emplace_front(0);
         instance.m_info_queue.arg2.emplace_front(0);
         instance.m_info_queue.vec.emplace_front(v);
-        instance.m_info_queue.e.emplace_front((uint8_t) e);
+        instance.m_info_queue.e.emplace_front((uint8_t)e);
         return true;
     }
     //----------------------------------------------------------------------------------------------------------------------
