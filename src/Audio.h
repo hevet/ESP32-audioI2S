@@ -586,7 +586,7 @@ class Audio {
         if (!audio_info_callback) return false;
         std::lock_guard<std::mutex> lock(instance.mutex_info); // lock mutex
         ps_ptr<char>                apic;
-        apic.assignf("APIC found at pos %lu", v[0]);
+        apic.assignf("APIC found at pos %u", v[0]);
         // msg_t i;
         // i.msg = apic.c_get();
         // i.e = e;
@@ -783,7 +783,7 @@ class _AutoProfiler {
 
         if (count >= N) {
             double avg_us = (double)sum / count;
-            printf(ANSI_ESC_CYAN "PROFILER [%s] avg: %.2f µs over %lu runs" ANSI_ESC_RESET "\n", tag, avg_us, count);
+            printf(ANSI_ESC_CYAN "PROFILER [%s] avg: %.2f µs over %u runs" ANSI_ESC_RESET "\n", tag, avg_us, count);
             sum = 0;
             count = 0;
         }
