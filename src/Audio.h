@@ -27,7 +27,9 @@
 #include <libb64/cencode.h>
 #include <locale>
 #include <memory>
+#include <format>
 #include <span>
+#include <tuple>
 #include <vector>
 
 #ifndef I2S_GPIO_UNUSED
@@ -527,7 +529,20 @@ class Audio {
     // specialization for nullptr / NULL
     static const char* safe_arg(std::nullptr_t) { return "(null)"; }
 
-    template <typename... Args> static bool info(Audio& instance, event_t e, const char* fmt, Args&&... args) {
+    // Helper for {}-style formatting (AUDIO_LOG_IMPLF)
+    static const char* safe_argf(const char* v) { return v ? v : "(null)"; }
+    static char*       safe_argf(char* v) { return v ? v : (char*)"(null)"; }
+    template <size_t N> static const char* safe_argf(const char (&v)[N]) { return v; }
+    static const char* safe_argf(const std::string& v) { return v.c_str(); }
+    static std::string_view safe_argf(std::string_view v) { return v; }
+    static const char* safe_argf(ps_ptr<char>& v) { return v.c_get() ? v.c_get() : "(null)"; }
+    static const char* safe_argf(const ps_ptr<char>& v) { return v.c_get() ? v.c_get() : "(null)"; }
+    static const void* safe_argf(uint8_t* v) { return static_cast<const void*>(v); }
+    static const void* safe_argf(const uint8_t* v) { return static_cast<const void*>(v); }
+    static const char* safe_argf(std::nullptr_t) { return "(null)"; }
+    template <typename T> static auto safe_argf(T&& v) -> decltype(auto) { return std::forward<T>(v); }
+
+    template <typename... Args> static bool info(Audio& instance, event_t e, std::string_view fmt, Args&&... args) {
         std::lock_guard<std::mutex> lock(instance.mutex_info); // lock mutex
                                                                // -------------------------------------------------------------------------------------------------------------------
         auto extract_last_number = [](std::string_view s) -> int32_t {
@@ -552,23 +567,26 @@ class Audio {
             return -1; // no number found in the end
         };
         // -------------------------------------------------------------------------------------------------------------------
-        if (!fmt) return false;
+        if (fmt.empty()) return false;
         if (!audio_info_callback) return false;
+
+        std::string formatted;
+        try {
+            auto convertedArgs = std::make_tuple(safe_argf(std::forward<Args>(args))...);
+            formatted = std::apply(
+                [&](auto&... a) {
+                    return std::vformat(fmt, std::make_format_args(a...));
+                },
+                convertedArgs
+            );
+        } catch (const std::format_error&) {
+            return false;
+        }
+
         ps_ptr<char> result;
-        // First run: determine size
-        int len = std::snprintf(nullptr, 0, fmt, safe_arg(std::forward<Args>(args))...);
-        if (len <= 0) return false;
-        result.calloc(len + 1);
-        char* p = result.get();
-        if (!p) return false;
-        std::snprintf(p, len + 1, fmt, safe_arg(std::forward<Args>(args))...);
-        // msg_t i = {0};
-        // i.msg = result.c_get();
-        // i.e = e;
-        // i.s = eventStr[e];
-        // i.arg1 = extract_last_number(result.c_get());
-        // i.i2s_num = instance.m_i2s_items.i2s_num;
-        // audio_info_callback(i);
+        result.assign(formatted.c_str());
+        if (!result.valid()) return false;
+
         std::vector<uint32_t> v; // dummy
         v.push_back(0);
         instance.m_info_queue.msg.emplace_front(result);
@@ -586,7 +604,7 @@ class Audio {
         if (!audio_info_callback) return false;
         std::lock_guard<std::mutex> lock(instance.mutex_info); // lock mutex
         ps_ptr<char>                apic;
-        apic.assignf("APIC found at pos %u", v[0]);
+        apic.assignf("APIC found at pos {}", v[0]);
         // msg_t i;
         // i.msg = apic.c_get();
         // i.e = e;
@@ -605,7 +623,7 @@ class Audio {
     }
     //----------------------------------------------------------------------------------------------------------------------
 
-    template <typename... Args> static void AUDIO_LOG_IMPL(uint8_t level, const char* path, int line, const char* fmt, Args&&... args) {
+    template <typename... Args> static void AUDIO_LOG_IMPL(uint8_t level, const char* path, int line, std::string_view fmt, Args&&... args) {
 
 #define ANSI_ESC_RESET   "\033[0m"
 #define ANSI_ESC_BLACK   "\033[30m"
@@ -620,7 +638,7 @@ class Audio {
         ps_ptr<char> logStr;
         logStr.copy_from(path);
         while (logStr.contains("/")) { logStr.remove_before('/', false); }
-        logStr.appendf(":%i ", line);
+        logStr.appendf(":{} ", line);
 
         if (level == 1 && CORE_DEBUG_LEVEL >= 1) {
             logStr.append(ANSI_ESC_RED);
@@ -630,17 +648,26 @@ class Audio {
             logStr.append(ANSI_ESC_GREEN);
         } else if (level == 4 && CORE_DEBUG_LEVEL >= 4) {
             logStr.append(ANSI_ESC_CYAN);
-        } // debug
-        else if (level == 5 && CORE_DEBUG_LEVEL >= 4) {
+        } else if (level == 5 && CORE_DEBUG_LEVEL >= 4) {
             logStr.append(ANSI_ESC_WHITE);
-        } // verbose
-        else
+        } else {
             return;
-
-        int add_len = std::snprintf(nullptr, 0, fmt, std::forward<Args>(args)...);
-        if (add_len > 0) {
-            logStr.appendf(fmt, std::forward<Args>(args)...); // <-- neue appendf()
         }
+
+        std::string formatted;
+        try {
+            auto convertedArgs = std::make_tuple(safe_argf(std::forward<Args>(args))...);
+            formatted = std::apply(
+                [&](auto&... a) {
+                    return std::vformat(fmt, std::make_format_args(a...));
+                },
+                convertedArgs
+            );
+        } catch (const std::format_error& ex) {
+            formatted = std::string("[format_error] ") + ex.what();
+        }
+
+        logStr.append(formatted.c_str());
         logStr.append(ANSI_ESC_RESET);
 
         msg_t msg;
@@ -671,6 +698,7 @@ class Audio {
 #define AUDIO_LOG_WARN(fmt, ...)  AUDIO_LOG_IMPL(2, __FILE__, __LINE__, fmt, ##__VA_ARGS__)
 #define AUDIO_LOG_INFO(fmt, ...)  AUDIO_LOG_IMPL(3, __FILE__, __LINE__, fmt, ##__VA_ARGS__)
 #define AUDIO_LOG_DEBUG(fmt, ...) AUDIO_LOG_IMPL(4, __FILE__, __LINE__, fmt, ##__VA_ARGS__)
+
 };
 // —————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
 // 📌📌📌  D E C O D E R  📌📌📌
@@ -752,7 +780,7 @@ struct _HeapGuardSnapshot {
         if (!ok) {
             printf(ANSI_ESC_RED "HEAPGUARD [%s] ❌ Heap corruption detected AFTER!" ANSI_ESC_RESET "\n", func);
         } else {
-            printf(ANSI_ESC_GREEN "HEAPGUARD [%s] ✅ Heap OK | ΔDRAM=%+d | ΔPSRAM=%+d" ANSI_ESC_RESET "\n", func, delta_dram, delta_psram);
+            printf(ANSI_ESC_GREEN "HEAPGUARD [%s] ✅ Heap OK | ΔDRAM=%d | ΔPSRAM=%d" ANSI_ESC_RESET "\n", func, abs(delta_dram), abs(delta_psram));
         }
     }
 };
@@ -783,7 +811,7 @@ class _AutoProfiler {
 
         if (count >= N) {
             double avg_us = (double)sum / count;
-            printf(ANSI_ESC_CYAN "PROFILER [%s] avg: %.2f µs over %u runs" ANSI_ESC_RESET "\n", tag, avg_us, count);
+            printf(ANSI_ESC_CYAN "PROFILER [%s] avg: %.2f µs over %lu runs" ANSI_ESC_RESET "\n", tag, avg_us, count);
             sum = 0;
             count = 0;
         }
