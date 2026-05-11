@@ -4860,19 +4860,19 @@ bool Audio::parseHttpResponseHeader() { // this is the response to a GET / reque
         }
 
         else if (rhl.starts_with_icase("icy-name:")) {
-            //  AUDIO_LOG_INFO("%s", rhl.get());
+            //  AUDIO_LOG_INFO("{}", rhl.get());
             latinToUTF8(rhl); // if already UTF-8 do nothing, otherwise convert to UTF-8
             ps_ptr<char> icyName;
             icyName.assign(rhl.get() + 9); // Get station name
             icyName.trim();
-            if (icyName.strlen() > 0) { info(*this, evt_name, "%s", icyName.get()); }
+            if (icyName.strlen() > 0) { info(*this, evt_name, "{}", icyName.get()); }
         }
 
         else if (rhl.starts_with_icase("content-length:")) {
             const char* c_cl = (rhl.get() + 15);
             int32_t     i_cl = atoi(c_cl);
             m_audioFileSize = i_cl;
-            // info(*this, evt_info, "content-length: %lu", (long unsigned int)m_audioFileSize);
+            // info(*this, evt_info, "content-length: {}", (long unsigned int)m_audioFileSize);
         }
 
         else if (rhl.starts_with_icase("icy-description:")) {
@@ -4880,10 +4880,10 @@ bool Audio::parseHttpResponseHeader() { // this is the response to a GET / reque
             const char* c_idesc = (rhl.get() + 16);
             while (c_idesc[0] == ' ') c_idesc++;
             if (strlen(c_idesc) > 0 && specialIndexOf((uint8_t*)c_idesc, "24bit", 0) > 0) {
-                AUDIO_LOG_INFO("icy-description: %s has to be 8 or 16", c_idesc);
+                AUDIO_LOG_INFO("icy-description: {} has to be 8 or 16", c_idesc);
                 stopSong();
             }
-            info(*this, evt_icydescription, "%s", c_idesc);
+            info(*this, evt_icydescription, "{}", c_idesc);
         }
 
         else if (rhl.starts_with_icase("transfer-encoding:")) {
