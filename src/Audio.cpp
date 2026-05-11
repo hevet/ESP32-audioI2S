@@ -6327,9 +6327,9 @@ void Audio::setTone(float gainLowPass, float gainBandPass, float gainHighPass) {
     // gainBandPass  set between -12 ... +12 dB
     // gainHighPass  set between -12 ... +12 dB
 
-    m_audio_items.gain_ls_db = fminf(fmaxf(gainLowPass, -12.0f), 12.0f);
-    m_audio_items.gain_peq_db = fminf(fmaxf(gainBandPass, -12.0f), 12.0f);
-    m_audio_items.gain_hs_db = fminf(fmaxf(gainHighPass, -12.0f), 12.0f);
+    m_audio_items.gain_ls_db = fminf(fmaxf(gainLowPass, -16.0f), 16.0f);
+    m_audio_items.gain_peq_db = fminf(fmaxf(gainBandPass, -16.0f), 16.0f);
+    m_audio_items.gain_hs_db = fminf(fmaxf(gainHighPass, -16.0f), 16.0f);
 
     IIR_calculateCoefficients();
 }
