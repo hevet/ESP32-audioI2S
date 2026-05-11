@@ -4861,6 +4861,7 @@ bool Audio::parseHttpResponseHeader() { // this is the response to a GET / reque
 
         else if (rhl.starts_with_icase("icy-name:")) {
             //  AUDIO_LOG_INFO("{}", rhl.get());
+            latinToUTF8(rhl); // if already UTF-8 do nothing, otherwise convert to UTF-8
             ps_ptr<char> icyName;
             icyName.assign(rhl.get() + 9); // Get station name
             icyName.trim();
@@ -4875,9 +4876,10 @@ bool Audio::parseHttpResponseHeader() { // this is the response to a GET / reque
         }
 
         else if (rhl.starts_with_icase("icy-description:")) {
+            latinToUTF8(rhl); // if already UTF-8 do nothing, otherwise convert to UTF-8
             const char* c_idesc = (rhl.get() + 16);
             while (c_idesc[0] == ' ') c_idesc++;
-            latinToUTF8(rhl); // if already UTF-8 do nothing, otherwise convert to UTF-8
+            //latinToUTF8(rhl); // if already UTF-8 do nothing, otherwise convert to UTF-8
             if (strlen(c_idesc) > 0 && specialIndexOf((uint8_t*)c_idesc, "24bit", 0) > 0) {
                 AUDIO_LOG_INFO("icy-description: {} has to be 8 or 16", c_idesc);
                 stopSong();
