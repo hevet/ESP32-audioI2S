@@ -20,7 +20,7 @@
 **/
 
 // ESP32 Version 29.07.2024
-// updated:      10.05.2026
+// updated:      05.10.2025
 
 #pragma once
 #include "../../Audio.h"

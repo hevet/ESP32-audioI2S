@@ -4,11 +4,8 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
-#include <format>
 #include <memory>
-#include <string>
 #include <span>
-#include <string_view>
 #include <type_traits>
 #include <utility>
 
@@ -892,40 +889,43 @@ class ps_ptr {
     // 📌📌📌  A S S I G N F   📌📌📌
 
     // ps_ptr<char> message;
-    // message.assignf("Code %d, Modul {}", 404, "Network");
+    // message.assignf("Code %d, Modul %s", 404, "Network");
     // printf("%s\n", message.get());  // → Error: Code 404, Modul Network
 
-    template <typename... Args>
-    void assignf(std::string_view fmtStr, Args&&... args) {
-        static_assert(std::is_same_v<T, char>, "assignf is only available for ps_ptr<char>");
-        std::string text;
+    // onli activate if T = char
+    template <typename U = T>
+        requires std::is_same_v<U, char>
+    void assignf(const char* fmt, ...) {
+        if (!fmt) return;
+        // Formatierte Länge berechnen
+        va_list args;
+        va_start(args, fmt);
+        va_list args_copy;
+        va_copy(args_copy, args);
+        int fmt_len = vsnprintf(nullptr, 0, fmt, args_copy);
+        va_end(args_copy);
 
-        if (fmtStr.find('{') != std::string_view::npos) {
-            text = std::vformat(fmtStr, std::make_format_args(args...));
-        } else {
-            std::string legacyFmt(fmtStr);
-            int         needed = std::snprintf(nullptr, 0, legacyFmt.c_str(), std::forward<Args>(args)...);
-            if (needed < 0) return;
-
-            text.resize(static_cast<std::size_t>(needed));
-            std::snprintf(text.data(), text.size() + 1, legacyFmt.c_str(), std::forward<Args>(args)...);
-        }
-
-        reset();
-
-        alloc(text.size() + 1);
-
-        if (!mem) {
-            printf("OOM: assignf() failed for %zu bytes\n", text.size() + 1);
+        if (fmt_len < 0) {
+            va_end(args);
             return;
         }
 
-        std::memcpy(mem.get(), text.data(), text.size());
-        static_cast<char*>(mem.get())[text.size()] = '\0';
+        std::size_t new_len = static_cast<std::size_t>(fmt_len) + 1;
 
-        allocated_size = text.size();
+        // share previous memory and new allocates
+        reset();
+        alloc(new_len);
+        if (!mem) {
+            printf("OOM: assignf() failed for %zu bytes\n", new_len);
+            va_end(args);
+            return;
+        }
+
+        // write formatted text
+        vsnprintf(static_cast<char*>(mem.get()), new_len, fmt, args);
+        va_end(args);
+        allocated_size = fmt_len;
     }
-
     // —————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
     // 📌📌📌  A P P E N D F   📌📌📌
 
@@ -936,28 +936,30 @@ class ps_ptr {
 
     // Nur aktivieren, wenn T = char
 
-    template <typename... Args> void appendf(std::string_view fmtStr, Args&&... args) {
-        static_assert(std::is_same_v<T, char>, "appendf is only available for ps_ptr<char>");
+    template <typename... Args> void appendf(const char* fmt, Args&&... args) {
+        if (!fmt) return;
+        int add_len = std::snprintf(nullptr, 0, fmt, std::forward<Args>(args)...);
+        if (add_len < 0) return;
 
-        std::string text;
+        std::size_t old_len = mem ? std::strlen(mem.get()) : 0;
+        std::size_t new_len = old_len + add_len + 1;
 
-        if (fmtStr.find('{') != std::string_view::npos) {
-            text = std::vformat(fmtStr, std::make_format_args(args...));
-        } else {
-            std::string legacyFmt(fmtStr);
-            int         needed = std::snprintf(nullptr, 0, legacyFmt.c_str(), std::forward<Args>(args)...);
-            if (needed < 0) return;
+        char* old_data = static_cast<char*>(mem.release());
+        reset();
+        alloc(new_len);
 
-            text.resize(static_cast<std::size_t>(needed));
-            std::snprintf(text.data(), text.size() + 1, legacyFmt.c_str(), std::forward<Args>(args)...);
+        if (!mem) {
+            printf("OOM: appendf() failed for %zu bytes\n", new_len);
+            if (old_data) free(old_data);
+            return;
         }
 
-        append(text.c_str());
-    }
+        if (old_data) {
+            std::memcpy(mem.get(), old_data, old_len);
+            free(old_data);
+        }
 
-    template <typename... Args> void appendf_va(std::string_view fmtStr, Args&&... args) {
-        static_assert(std::is_same_v<T, char>, "appendf_va is only available for ps_ptr<char>");
-        appendf(fmtStr, std::forward<Args>(args)...);
+        std::snprintf(mem.get() + old_len, new_len - old_len, fmt, std::forward<Args>(args)...);
     }
     // —————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
     // 📌📌📌  A P P E N D F _ V A  📌📌📌
@@ -2015,6 +2017,7 @@ class ps_ptr {
         }
         *dst = '\0';
         name = n;
+
     }
     // —————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
     // 📌📌📌  R E P L A C E   📌📌📌
@@ -2224,10 +2227,7 @@ class ps_ptr {
     // 📌📌📌  C L E A R   📌📌📌
 
     void clear() {
-        if (mem && allocated_size > 0) {
-            std::memset(mem.get(), 0, allocated_size);
-            length_ = 0;
-        }
+        if (mem && allocated_size > 0) { std::memset(mem.get(), 0, allocated_size); length_ = 0; }
     }
     // —————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
     // 📌📌📌  S I Z E   📌📌📌
@@ -2364,7 +2364,7 @@ class ps_ptr {
     // Safe operator[] with logging
     T& operator[](std::size_t index) noexcept {
         if (index >= allocated_size) {
-            log_e("[%s:%i] ps_ptr[]: Index %zu out of bounds (size = %zu, name = %s)", __FILE__, __LINE__, index, allocated_size, name ? name : "unnamed");
+            log_e("[%s:%i] ps_ptr[]: Index %zu out of bounds (size = %zu, name = %s)",__FILE__, __LINE__, index, allocated_size,  name ? name : "unnamed");
             return dummy; // Access allowed, but ineffective
         }
         return mem[index];
@@ -2372,7 +2372,7 @@ class ps_ptr {
 
     const T& operator[](std::size_t index) const noexcept {
         if (index >= allocated_size) {
-            log_e("[%s:%i] ps_ptr[]: Index %zu out of bounds (size = %zu, name = %s)", __FILE__, __LINE__, index, allocated_size, name ? name : "unnamed");
+            log_e("[%s:%i] ps_ptr[]: Index %zu out of bounds (size = %zu, name = %s)",__FILE__, __LINE__, index, allocated_size,  name ? name : "unnamed");
             return dummy;
         }
         return mem[index];
@@ -2763,14 +2763,6 @@ template <typename T> class ps_struct_ptr {
     std::size_t size() const { return sizeof(T); }
     void        clear() { reset(); }
 };
-
-namespace std {
-template <> struct formatter<ps_ptr<char>, char> : formatter<string_view, char> {
-    auto format(const ps_ptr<char>& value, format_context& ctx) const {
-        return formatter<string_view, char>::format(value.c_get(), ctx);
-    }
-};
-} // namespace std
 
     // ——————————————————————————————————————————————————————————————
     // Macro for the declaration of releasing fields for a structure
