@@ -4882,6 +4882,7 @@ bool Audio::parseHttpResponseHeader() { // this is the response to a GET / reque
 
         else if (rhl.starts_with_icase("icy-name:")) {
             //  AUDIO_LOG_INFO("{}", rhl.get());
+            latinToUTF8(rhl); // if already UTF-8 do nothing, otherwise convert to UTF-8
             ps_ptr<char> icyName;
             icyName.assign(rhl.get() + 9); // Get station name
             icyName.trim();
@@ -4896,9 +4897,10 @@ bool Audio::parseHttpResponseHeader() { // this is the response to a GET / reque
         }
 
         else if (rhl.starts_with_icase("icy-description:")) {
+            latinToUTF8(rhl); // if already UTF-8 do nothing, otherwise convert to UTF-8
             const char* c_idesc = (rhl.get() + 16);
             while (c_idesc[0] == ' ') c_idesc++;
-            latinToUTF8(rhl); // if already UTF-8 do nothing, otherwise convert to UTF-8
+            //latinToUTF8(rhl); // if already UTF-8 do nothing, otherwise convert to UTF-8
             if (strlen(c_idesc) > 0 && specialIndexOf((uint8_t*)c_idesc, "24bit", 0) > 0) {
                 AUDIO_LOG_INFO("icy-description: {} has to be 8 or 16", c_idesc);
                 stopSong();
@@ -6345,9 +6347,9 @@ void Audio::setTone(float gainLowPass, float gainBandPass, float gainHighPass) {
     // gainBandPass  set between -12 ... +12 dB
     // gainHighPass  set between -12 ... +12 dB
 
-    m_audio_items.gain_ls_db = fminf(fmaxf(gainLowPass, -12.0f), 12.0f);
-    m_audio_items.gain_peq_db = fminf(fmaxf(gainBandPass, -12.0f), 12.0f);
-    m_audio_items.gain_hs_db = fminf(fmaxf(gainHighPass, -12.0f), 12.0f);
+    m_audio_items.gain_ls_db = fminf(fmaxf(gainLowPass, -16.0f), 16.0f);
+    m_audio_items.gain_peq_db = fminf(fmaxf(gainBandPass, -16.0f), 16.0f);
+    m_audio_items.gain_hs_db = fminf(fmaxf(gainHighPass, -16.0f), 16.0f);
 
     IIR_calculateCoefficients();
 }
