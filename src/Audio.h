@@ -27,7 +27,6 @@
 #include <libb64/cencode.h>
 #include <locale>
 #include <memory>
-#include <optional>
 #include <span>
 #include <vector>
 #include <optional>
