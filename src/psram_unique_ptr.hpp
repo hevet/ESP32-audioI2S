@@ -592,6 +592,12 @@ class ps_ptr {
     // printf("%s\n", copy.get());  // → Hello World
 
     void clone_from(const ps_ptr<T>& other) {
+
+        if constexpr (std::is_same_v<T, char>) {
+            assign(other.get());
+            return;
+        }
+
         if (!other.valid() || other.size() == 0) {
             reset();
             return;
@@ -599,7 +605,10 @@ class ps_ptr {
 
         std::size_t sz = other.size();
         alloc(sz);
-        if (mem && sz > 0) { std::memcpy(mem.get(), other.get(), sz); }
+
+        if (mem && sz > 0) {
+            std::memcpy(mem.get(), other.get(), sz);
+        }
     }
     // —————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
     // 📌📌📌  S W A P   📌📌📌
