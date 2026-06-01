@@ -592,12 +592,6 @@ class ps_ptr {
     // printf("%s\n", copy.get());  // → Hello World
 
     void clone_from(const ps_ptr<T>& other) {
-
-        if constexpr (std::is_same_v<T, char>) {
-            assign(other.get());
-            return;
-        }
-
         if (!other.valid() || other.size() == 0) {
             reset();
             return;
