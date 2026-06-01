@@ -810,8 +810,8 @@ bool Audio::connecttohost(const char* host, const char* user, const char* pwd) {
         if (extension.ends_with_icase(".pls")) m_expectedPlsFmt = FORMAT_PLS;
         if (extension.contains(".m3u8")) m_expectedPlsFmt = FORMAT_M3U8;
 
-        m_currentHost.clone_from(c_host);
-        m_lastHost.clone_from(c_host);
+        m_currentHost = c_host;
+        m_lastHost = c_host;
         info(*this, evt_lasthost, "{}", m_lastHost.c_get());
         m_dataMode = HTTP_RESPONSE_HEADER; // Handle header
         m_streamType = ST_WEBSTREAM;
@@ -855,10 +855,10 @@ bool Audio::httpPrint(const char* host) {
 
     m_f_ssl = dismantledHost.ssl;
     port = dismantledHost.port;
-    if (dismantledHost.hwoe.valid()) hwoe.clone_from(dismantledHost.hwoe);
-    if (dismantledHost.rqh_host.valid()) rqh_host.clone_from(dismantledHost.rqh_host);
-    if (dismantledHost.extension.valid()) extension.clone_from(dismantledHost.extension);
-    if (dismantledHost.query_string.valid()) query_string.clone_from(dismantledHost.query_string);
+    if (dismantledHost.hwoe.valid()) hwoe = dismantledHost.hwoe;
+    if (dismantledHost.rqh_host.valid()) rqh_host = dismantledHost.rqh_host;
+    if (dismantledHost.extension.valid()) extension = dismantledHost.extension;
+    if (dismantledHost.query_string.valid()) query_string = dismantledHost.query_string;
 
     if (extension.valid()) path.assign(extension.get());
     if (query_string.valid()) {
@@ -873,7 +873,7 @@ bool Audio::httpPrint(const char* host) {
 
     if (!m_currentHost.valid()) m_currentHost.assign("");
     auto dismantledLastHost = dismantle_host(m_currentHost.get());
-    cur_hwoe.clone_from(dismantledLastHost.hwoe);
+    cur_hwoe = dismantledLastHost.hwoe;
 
     bool f_equal = true;
     if (hwoe.equals(cur_hwoe) && port == dismantledLastHost.port) {
@@ -913,7 +913,7 @@ bool Audio::httpPrint(const char* host) {
             return false;
         }
     }
-    m_currentHost.clone_from(c_host);
+    m_currentHost = c_host;
     m_client->print(rqh.get());
 
     if (extension.ends_with_icase(".mp3"))
@@ -963,7 +963,7 @@ bool Audio::httpRange(uint32_t seek, uint32_t length) {
     ps_ptr<char> cur_hwoe;     // m_currenthost without extension
     ps_ptr<char> range;        // e.g. "Range: bytes=124-"
 
-    c_host.clone_from(m_currentHost);
+    c_host = m_currentHost;
     c_host.trim();
     auto dismantledHost = dismantle_host(c_host.get());
 
@@ -976,10 +976,10 @@ bool Audio::httpRange(uint32_t seek, uint32_t length) {
 
     m_f_ssl = dismantledHost.ssl;
     port = dismantledHost.port;
-    if (dismantledHost.hwoe.valid()) hwoe.clone_from(dismantledHost.hwoe);
-    if (dismantledHost.rqh_host.valid()) rqh_host.clone_from(dismantledHost.rqh_host);
-    if (dismantledHost.extension.valid()) extension.clone_from(dismantledHost.extension);
-    if (dismantledHost.query_string.valid()) query_string.clone_from(dismantledHost.query_string);
+    if (dismantledHost.hwoe.valid()) hwoe = dismantledHost.hwoe;
+    if (dismantledHost.rqh_host.valid()) rqh_host = dismantledHost.rqh_host;
+    if (dismantledHost.extension.valid()) extension = dismantledHost.extension;
+    if (dismantledHost.query_string.valid()) query_string = dismantledHost.query_string;
 
     if (extension.valid()) path.assign(extension.get());
     if (query_string.valid()) {
@@ -994,7 +994,7 @@ bool Audio::httpRange(uint32_t seek, uint32_t length) {
 
     if (!m_currentHost.valid()) m_currentHost.assign("");
     auto dismantledLastHost = dismantle_host(m_currentHost.get());
-    cur_hwoe.clone_from(dismantledLastHost.hwoe);
+    cur_hwoe = dismantledLastHost.hwoe;
 
     if (length == UINT32_MAX)
         range.assignf("Range: bytes={}-\r\n", seek);
