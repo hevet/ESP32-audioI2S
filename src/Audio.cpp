@@ -3545,8 +3545,7 @@ void Audio::loop() {
                     }
                 } else {
                     m_lVar.count = 0;
-                    if (!m_f_ts)
-                        m_f_firstCall = true;
+                    m_f_firstCall = true;
                 }
                 break;
             case AUDIO_PLAYLISTINIT:
