@@ -1068,8 +1068,8 @@ bool Audio::connecttohost(const char* host, const char* user, const char* pwd) {
         return false;
     } // max length in Chrome DevTools
 
-    const char* user_agent = "Mozilla/5.0 (X11; Linux x86_64) Chrome/146.0.0.0 Safari/537.36";
-    // const char* user_agent = "VLC/3.0.21 LibVLC/3.0.21 AppleWebKit/537.36 (KHTML, like Gecko)";
+    // const char* user_agent = "Mozilla/5.0 (X11; Linux x86_64) Chrome/146.0.0.0 Safari/537.36";
+    const char* user_agent = "VLC/3.0.21 LibVLC/3.0.21 AppleWebKit/537.36 (KHTML, like Gecko)";
 
     bool     res = false;   // return value
     uint16_t port = 0;      // port number
