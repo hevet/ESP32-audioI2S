@@ -6790,10 +6790,10 @@ void Audio::calculateVUlevel(int32_t* buff, size_t len) {
                 //--------------------------------------------------------------------------------------------------
 
                 // output
-                m_vu_items.lrvec[0] = m_vu_items.vuCurve[m_vu_items.displayLeft];
-                m_vu_items.lrvec[1] = m_vu_items.vuCurve[m_vu_items.displayRight];
-                m_vu_items.lrvec[2] = m_vu_items.vuCurve[m_vu_items.peakLeft];
-                m_vu_items.lrvec[3] = m_vu_items.vuCurve[m_vu_items.peakRight];
+                m_vu_items.lrvec[0] = m_vu_items.vuCurve[m_vu_items.delay_bars_left.fifo(m_vu_items.displayLeft)];
+                m_vu_items.lrvec[1] = m_vu_items.vuCurve[m_vu_items.delay_bars_right.fifo(m_vu_items.displayRight)];
+                m_vu_items.lrvec[2] = m_vu_items.vuCurve[m_vu_items.delay_peak_left.fifo(m_vu_items.peakLeft)];
+                m_vu_items.lrvec[3] = m_vu_items.vuCurve[m_vu_items.delay_peak_right.fifo(m_vu_items.peakRight)];
                 // AUDIO_LOG_INFO("{:03} {:03} {:03} {:03}", m_vu_items.lrvec[0], m_vu_items.lrvec[1], m_vu_items.lrvec[2], m_vu_items.lrvec[3]);
                 info(*this, evt_vu, m_vu_items.lrvec);
 
@@ -6814,10 +6814,10 @@ void Audio::calculateVUlevel(int32_t* buff, size_t len) {
         //--------------------------------------------------------------------------------------------------
 
         // output
-        m_vu_items.lrvec[0] = m_vu_items.vuCurve[m_vu_items.displayLeft];
-        m_vu_items.lrvec[1] = m_vu_items.vuCurve[m_vu_items.displayRight];
-        m_vu_items.lrvec[2] = m_vu_items.vuCurve[m_vu_items.peakLeft];
-        m_vu_items.lrvec[3] = m_vu_items.vuCurve[m_vu_items.peakRight];
+        m_vu_items.lrvec[0] = m_vu_items.vuCurve[m_vu_items.delay_bars_left.fifo(m_vu_items.displayLeft)];
+        m_vu_items.lrvec[1] = m_vu_items.vuCurve[m_vu_items.delay_bars_right.fifo(m_vu_items.displayRight)];
+        m_vu_items.lrvec[2] = m_vu_items.vuCurve[m_vu_items.delay_peak_left.fifo(m_vu_items.peakLeft)];
+        m_vu_items.lrvec[3] = m_vu_items.vuCurve[m_vu_items.delay_peak_right.fifo(m_vu_items.peakRight)];
         info(*this, evt_vu, m_vu_items.lrvec);
         // AUDIO_LOG_INFO("{:03} {:03} {:03} {:03}", m_vu_items.lrvec[0], m_vu_items.lrvec[1], m_vu_items.lrvec[2], m_vu_items.lrvec[3]);
     }
