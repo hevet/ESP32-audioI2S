@@ -4,8 +4,8 @@
 
     Created on: 28.10.2018                                                                                                  */
 char audioI2SVers[] = "\
-    Version 4.0.0a                                                                                                                         ";
-/*  Updated on: Aug 08, 2026
+    Version 4.0.0a3                                                                                                                         ";
+/*  Updated on: Aug 09, 2026
 
     Author: Wolle (schreibfaul1)
     Audio library for ESP32, ESP32-S3 or ESP32-P4
@@ -3593,8 +3593,8 @@ uint32_t Audio::stopSong() {
         if (m_f_running) {
             m_f_running = false;
             if (m_client->connected()) {
-                if (m_streamType == ST_WEBSTREAM) { info(*this, evt_info, "Closing web stream \"{}\"", m_lastHost.c_get()); }
-                if (m_streamType == ST_WEBFILE) { info(*this, evt_info, "Closing web file \"{}\"", m_lastHost.c_get()); }
+                if (isStream()) { info(*this, evt_info, "Closing web stream \"{}\"", m_lastHost.c_get()); }
+                if (isFile()) { info(*this, evt_info, "Closing web file \"{}\"", m_lastHost.c_get()); }
                 m_client->stop();
             }
             if (m_audiofile) {
@@ -3614,7 +3614,7 @@ uint32_t Audio::stopSong() {
 bool Audio::pauseResume() {
     xSemaphoreTake(mutex_audioTask, 0.3 * configTICK_RATE_HZ);
     bool retVal = false;
-    if (m_dataMode == AUDIO_LOCALFILE || m_streamType == ST_WEBSTREAM || m_streamType == ST_WEBFILE) {
+    if (isFile() || isStream()) {
         m_f_running = !m_f_running;
         retVal = true;
         if (!m_f_running) {
@@ -3883,8 +3883,8 @@ void Audio::loop() {
                 if (m_playlistFormat == FORMAT_ASX) httpPrint(parsePlaylist_ASX().c_get());
                 break;
             case AUDIO_DATA:
-                if (m_streamType == ST_WEBSTREAM) processWebStream();
-                if (m_streamType == ST_WEBFILE) processWebFile();
+                if (isFile()) processWebFile();
+                if (isStream()) processWebStream();
                 break;
         }
     } else { // m3u8 datastream only
@@ -5180,18 +5180,12 @@ void Audio::playAudioData() {
     }
     //--------------------------------------------------------------------------------
 
-    bool isFile = false;
-    bool isStream = false;
-
-    if (m_dataMode == AUDIO_LOCALFILE) isFile = true;
-    if (m_streamType == ST_WEBFILE && m_playlistFormat != FORMAT_M3U8) isFile = true; // local file or webfile but not m3u8 file
-    if (m_streamType == ST_WEBSTREAM || m_playlistFormat == FORMAT_M3U8) isStream = true;
-    if (!isFile && !isStream) return;
+    if (!isFile() && !isStream()) return;
 
     xSemaphoreTake(mutex_audioTaskIsDecoding, 1 * configTICK_RATE_HZ);
     {
         m_pad.bytesDecoded = 0;
-        if (isFile) {
+        if (isFile()) {
             if (!m_audioDataSize) goto exit; // no data to decode if filesize is 0
             if (m_audioDataSize - m_audioDataReadPtr == 128) {
                 m_f_ID3v1TagFound = true;
@@ -5215,7 +5209,7 @@ void Audio::playAudioData() {
             }
         }
 
-        if (isStream) {
+        if ((isStream())) {
             if (m_f_allDataReceived) { // Google TTS, OpenAI
                 m_pad.lastFrames = true;
                 if (m_f_tts && !InBuff.bufferFilled()) {
@@ -6365,8 +6359,8 @@ uint32_t Audio::getAudioFilePosition() {
 }
 // —————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
 bool Audio::setAudioFilePosition(uint32_t pos) {
-    if (!m_f_stream) return false;
-    if ((m_dataMode != AUDIO_LOCALFILE) && (m_streamType != ST_WEBFILE)) {
+    if (!m_f_stream) return false; // stream ready?
+    if (!isFile()) {
         AUDIO_LOG_WARN("audio is not a file");
         return false;
     }
@@ -6805,7 +6799,7 @@ void Audio::calculateVUlevel(int32_t* buff, size_t len) {
 
         for (int i = 0; i < 256; i++) {
             double x = i / 255.0;
-            int y = std::lround(255.0 * std::pow(x, 0.5));
+            int    y = std::lround(255.0 * std::pow(x, 0.5));
             m_vu_items.vuCurve[i] = y;
         }
         // Send initial value
@@ -7067,31 +7061,67 @@ void Audio::calculateSpectrum(int32_t* buff, size_t len) {
     const uint16_t  NUM_BANDS = 15;
     constexpr float DB_MIN = 90.0f;
     constexpr float DB_MAX = 120.0f;
-    float           pw[16];
-    uint16_t        timer_ms = 50; // every 50ms one output
 
     if (m_f_first_fft_call) {
         m_f_first_fft_call = false;
         m_fft_items.count = 0;
-        m_fft_items.samps_x_ms = m_i2s_items.sampleRate / (1000 / timer_ms);
+
+        //--------------------------------------------------------------------------
+        // Spectrum update interval
+        //
+        // One output every half DMA buffer.
+        //
+        // 16 * 256 = 4096 samples
+        // 4096 / 2 = 2048 samples
+        // 2048 / 44100 = 46.44 ms
+        //--------------------------------------------------------------------------
+        const size_t dmaSamples = static_cast<size_t>(m_i2s_chan_cfg.dma_desc_num) * static_cast<size_t>(m_i2s_chan_cfg.dma_frame_num);
+        m_fft_items.samps_x_ms = static_cast<uint16_t>(dmaSamples / 2);
+
+        //--------------------------------------------------------------------------
+        // Sample buffer
+        //--------------------------------------------------------------------------
+
         if (!m_fft_items.samples_buffer.valid()) { m_fft_items.samples_buffer.alloc_array(m_fft_items.FFT_SIZE, "samples_buffer"); }
         m_fft_items.samples_buffer.clear();
         m_fft_items.samples_buffer_index = 0;
+
+        //--------------------------------------------------------------------------
+        // Hann window
+        //--------------------------------------------------------------------------
+
         if (!m_fft_items.window.valid()) {
             m_fft_items.window.alloc_array(m_fft_items.FFT_SIZE, "fft_window");
             for (uint16_t i = 0; i < m_fft_items.FFT_SIZE; i++) { m_fft_items.window[i] = 0.5f * (1.0f - cosf(2.0f * PI * i / (m_fft_items.FFT_SIZE - 1))); }
         }
+
+        //--------------------------------------------------------------------------
+        // FFT input
+        //--------------------------------------------------------------------------
+
         if (!m_fft_items.fft_in.valid()) { m_fft_items.fft_in.alloc_array(m_fft_items.FFT_SIZE * 2, "fft_in"); }
+
+        //--------------------------------------------------------------------------
+        // Spectrum
+        //--------------------------------------------------------------------------
+
         if (!m_fft_items.spectrum.valid()) { m_fft_items.spectrum.alloc_array(m_fft_items.NUM_BANDS, "spectrum"); }
         m_fft_items.fft_in.clear();
         m_fft_items.spectrum.clear();
+
+        //--------------------------------------------------------------------------
+        // Vectors
+        //--------------------------------------------------------------------------
+
         m_fft_items.measured_vec.clear();
         m_fft_items.display_vec.clear();
         m_fft_items.peak_vec.clear();
+        m_fft_items.bars_hold_vec.clear();
         m_fft_items.peak_hold_vec.clear();
-        for (int i = 0; i < 16; i++) m_fft_items.measured_vec.push_back(0);
-        esp_err_t err = dsps_fft2r_init_fc32(nullptr, m_fft_items.FFT_SIZE);
-        if (err != ESP_OK) AUDIO_LOG_ERROR("err {}", err);
+        m_fft_items.delay_display_vec.clear();
+        m_fft_items.delay_peak_vec.clear();
+        m_fft_items.delayed_display_vec.clear();
+        m_fft_items.delayed_peak_vec.clear();
 
         for (int i = 0; i < m_fft_items.NUM_BANDS; i++) {
             m_fft_items.measured_vec.push_back(0);
@@ -7099,15 +7129,40 @@ void Audio::calculateSpectrum(int32_t* buff, size_t len) {
             m_fft_items.peak_vec.push_back(0);
             m_fft_items.bars_hold_vec.push_back(0);
             m_fft_items.peak_hold_vec.push_back(0);
+            m_fft_items.delayed_display_vec.push_back(0);
+            m_fft_items.delayed_peak_vec.push_back(0);
         }
+
+        //--------------------------------------------------------------------------
+        // Spectrum delay
+        //--------------------------------------------------------------------------
+        constexpr size_t FFT_DELAY = 3;
+
+        for (int i = 0; i < m_fft_items.NUM_BANDS; i++) {
+            ps_ptr<uint8_t> displayDelay;
+            displayDelay.calloc(FFT_DELAY, nullptr, false);
+            displayDelay.fifo_reset();
+            m_fft_items.delay_display_vec.push_back(std::move(displayDelay));
+            ps_ptr<uint8_t> peakDelay;
+            peakDelay.calloc(FFT_DELAY, nullptr, false);
+            peakDelay.fifo_reset();
+            m_fft_items.delay_peak_vec.push_back(std::move(peakDelay));
+        }
+
+        //--------------------------------------------------------------------------
+        // FFT initialization
+        //--------------------------------------------------------------------------
+        esp_err_t err = dsps_fft2r_init_fc32(nullptr, m_fft_items.FFT_SIZE);
+        if (err != ESP_OK) { AUDIO_LOG_ERROR("err {}", err); }
     }
 
-    uint8_t bars_attack_step = 100; // bars rising steps
-    uint8_t bars_release_step = 20; // bars falling steps
-    uint8_t peak_attack_step = 200; // peak rising steps
-    uint8_t peak_release_step = 10; // peak falling steps
-    uint8_t bars_hold_cycles = 1;   // bars hold_cycles * x ms
-    uint8_t peak_hold_cycles = 2;   // peak hold_cycles * x ms
+    // dynamics
+    uint8_t bars_attack_step = settings.SP_BARS_ATTACK_STEP;   // bars rising steps
+    uint8_t bars_release_step = settings.SP_BARS_RELEASE_STEP; // bars falling steps
+    uint8_t peak_attack_step = settings.SP_PEAK_ATTACK_STEP;   // peak rising steps
+    uint8_t peak_release_step = settings.SP_PEAK_RELEASE_STEP; // peak falling steps
+    uint8_t bars_hold_cycles = settings.SP_BARS_HOLD_CYCLES;   // bars hold_cycles * x ms
+    uint8_t peak_hold_cycles = settings.SP_PEAK_HOLD_CYCLES;   // peak hold_cycles * x ms
 
     if (m_decoder) {
         for (int i = 0; i < len / 2; i++) { // always stereo
@@ -7151,8 +7206,11 @@ void Audio::calculateSpectrum(int32_t* buff, size_t len) {
 
                         newVal(&m_fft_items.display_vec[b], m_fft_items.measured_vec[b], bars_attack_step, bars_release_step, bars_hold_cycles, &m_fft_items.bars_hold_vec[b]);
                         newVal(&m_fft_items.peak_vec[b], m_fft_items.measured_vec[b], peak_attack_step, peak_release_step, peak_hold_cycles, &m_fft_items.peak_hold_vec[b]);
+
+                        m_fft_items.delayed_display_vec[b] = m_fft_items.delay_display_vec[b].fifo(m_fft_items.display_vec[b]);
+                        m_fft_items.delayed_peak_vec[b] = m_fft_items.delay_peak_vec[b].fifo(m_fft_items.peak_vec[b]);
                     }
-                    info(*this, evt_spectrum, m_fft_items.display_vec, m_fft_items.peak_vec);
+                    info(*this, evt_spectrum, m_fft_items.delayed_display_vec, m_fft_items.delayed_peak_vec);
                 }
             }
         }
@@ -7160,8 +7218,10 @@ void Audio::calculateSpectrum(int32_t* buff, size_t len) {
         for (int b = 0; b < m_fft_items.NUM_BANDS; b++) {
             newVal(&m_fft_items.display_vec[b], 0, bars_attack_step, bars_release_step, bars_hold_cycles, &m_fft_items.bars_hold_vec[b]);
             newVal(&m_fft_items.peak_vec[b], 0, peak_attack_step, peak_release_step, peak_hold_cycles, &m_fft_items.peak_hold_vec[b]);
+            m_fft_items.delayed_display_vec[b] = m_fft_items.delay_display_vec[b].fifo(m_fft_items.display_vec[b]);
+            m_fft_items.delayed_peak_vec[b] = m_fft_items.delay_peak_vec[b].fifo(m_fft_items.peak_vec[b]);
         }
-        info(*this, evt_spectrum, m_fft_items.display_vec, m_fft_items.peak_vec);
+        info(*this, evt_spectrum, m_fft_items.delayed_display_vec, m_fft_items.delayed_peak_vec);
     }
 }
 
@@ -8021,9 +8081,7 @@ uint8_t Audio::determineCodec(uint8_t presumed_codec) {
             idx = specialIndexOf(InBuff.getReadPtr(), "vorbis", 127);
             if (idx >= 28) { res = CODEC_VORBIS; }
 
-            if (m_streamType == ST_WEBFILE || m_dataMode == AUDIO_LOCALFILE) { // is file?
-                m_lastGranulePosition = getLastGranulePosition(res);           // VORBIS or OPUS only
-            }
+            if (isFile()) { m_lastGranulePosition = getLastGranulePosition(res); } // VORBIS or OPUS only
             AUDIO_LOG_DEBUG("lastGranulePosition {}", m_lastGranulePosition);
         }
         return res;
