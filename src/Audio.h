@@ -610,6 +610,7 @@ class Audio {
     uint32_t       m_t0 = 0;                          // store millis(), is needed for a small delay
     uint32_t       m_bytesNotConsumed = 0;            // pictures or something else that comes with the stream
     uint64_t       m_lastGranulePosition = 0;         // necessary to calculate the duration in OPUS and VORBIS
+    uint32_t       m_total_samples_in_file = 0;     //
     int32_t        m_resumeFilePos = -1;              // the return value from stopSong(), (-1) is idle
     int32_t        m_fileStartTime = -1;              // may be set in connecttoFS()
     uint16_t       m_m3u8_targetDuration = 10;        //
@@ -653,6 +654,7 @@ class Audio {
     bool           m_f_reset_m3u8Codec = true;        // reset codec for m3u8 stream
     bool           m_f_connectionClose = false;       // set in parseHttpResponseHeader
     bool           m_f_i2s_channel_enabled = false;   // true if enabled
+    bool           m_f_mute = false;
     uint32_t       m_audioFileDuration = 0;           // seconds
     uint32_t       m_audioCurrentTime = 0;            // seconds
     uint32_t       m_audioDataStart = 0;              // in bytes
