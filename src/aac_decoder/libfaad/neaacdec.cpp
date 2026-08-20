@@ -536,6 +536,7 @@ int32_t NeaacDecoder::NeAACDecInit(NeAACDecHandle hpDecoder, uint8_t* buffer, ui
         hDecoder->downSampledSBR = 1;
     }
 #endif
+    if (can_decode_ot(hDecoder->object_type) < 0) return -1;
     /* must be done before frameLength is divided by 2 for LD */
 #ifdef SSR_DEC
     if (hDecoder->object_type == SSR)
@@ -546,10 +547,6 @@ int32_t NeaacDecoder::NeAACDecInit(NeAACDecHandle hpDecoder, uint8_t* buffer, ui
 #ifdef LD_DEC
     if (hDecoder->object_type == LD) hDecoder->frameLength >>= 1;
 #endif
-    if (can_decode_ot(hDecoder->object_type) < 0) {
-        ret = -1;
-        goto exit;
-    }
     ret = bits;
     goto exit;
 exit:
@@ -6677,6 +6674,7 @@ uint8_t NeaacDecoder::window_grouping_info(NeAACDecStruct* hDecoder, ic_stream* 
 #ifdef LD_DEC
             }
 #endif
+            if (ics->num_swb > 0 && ics->swb_offset[ics->num_swb] < ics->swb_offset[ics->num_swb - 1]) { return 32; }
             return 0;
         case EIGHT_SHORT_SEQUENCE:
             ics->num_windows = 8;
@@ -6810,6 +6808,12 @@ uint8_t NeaacDecoder::quant_to_spec(NeAACDecStruct* hDecoder, ic_stream* ics, in
         for (sfb = 0; sfb < ics->num_swb; sfb++) {
             int32_t exp, frac;
             width = ics->swb_offset[sfb + 1] - ics->swb_offset[sfb];
+            if (width + 3 >= 1024) {
+                // quant_data contains 1024 uint16_t, the k iterator + 3
+                // should never reach more 1024
+                error = 17;
+                continue;
+            }
             /* this could be scalefactor for IS or PNS, those can be negative or bigger then 255 */
             /* just ignore them */
             if (ics->scale_factors[g][sfb] < 0 || ics->scale_factors[g][sfb] > 255) {
@@ -7146,6 +7150,7 @@ uint8_t NeaacDecoder::reconstruct_single_channel(NeAACDecStruct* hDecoder, ic_st
             ics->ltp.lag = hDecoder->ltp_lag[sce->channel];
         }
     #endif
+        if (!hDecoder->lt_pred_stat[sce->channel]) return 35; // Long term prediction not initialised
         /* long term prediction */
         lt_prediction(ics, &(ics->ltp), spec_coef, hDecoder->lt_pred_stat[sce->channel], hDecoder->fb, ics->window_shape, hDecoder->window_shape_prev[sce->channel], hDecoder->sf_index,
                       hDecoder->object_type, hDecoder->frameLength);
@@ -7288,6 +7293,7 @@ uint8_t NeaacDecoder::reconstruct_channel_pair(NeAACDecStruct* hDecoder, ic_stre
 #ifdef MAIN_DEC
     /* MAIN object type prediction */
     if (hDecoder->object_type == MAIN) {
+        if (!hDecoder->pred_stat[cpe->channel] || !hDecoder->pred_stat[cpe->paired_channel]) return 33;
         /* intra channel prediction */
         ic_prediction(ics1, spec_coef1, hDecoder->pred_stat[cpe->channel], hDecoder->frameLength, hDecoder->sf_index);
         ic_prediction(ics2, spec_coef2, hDecoder->pred_stat[cpe->paired_channel], hDecoder->frameLength, hDecoder->sf_index);
@@ -7315,6 +7321,7 @@ uint8_t NeaacDecoder::reconstruct_channel_pair(NeAACDecStruct* hDecoder, ic_stre
             ltp2->lag = hDecoder->ltp_lag[cpe->paired_channel];
         }
     #endif
+        if (!hDecoder->lt_pred_stat[cpe->channel] || !hDecoder->lt_pred_stat[cpe->paired_channel]) return 35; // Long term prediction not initialised
         /* long term prediction */
         lt_prediction(ics1, ltp1, spec_coef1, hDecoder->lt_pred_stat[cpe->channel], hDecoder->fb, ics1->window_shape, hDecoder->window_shape_prev[cpe->channel], hDecoder->sf_index,
                       hDecoder->object_type, hDecoder->frameLength);
@@ -11858,7 +11865,8 @@ uint8_t NeaacDecoder::sbr_process_channel(sbr_info* sbr, real_t* channel_buf, qm
             for (k = 0; k < kx_band + bsco_band; k++) { QMF_RE(X[l][k]) = QMF_RE(sbr->Xsbr[ch][l + sbr->tHFAdj][k]); }
             for (k = kx_band + bsco_band; k < min(kx_band + M_band, 63); k++) { QMF_RE(X[l][k]) = QMF_RE(sbr->Xsbr[ch][l + sbr->tHFAdj][k]); }
             for (k = max(kx_band + bsco_band, kx_band + M_band); k < 64; k++) { QMF_RE(X[l][k]) = 0; }
-            /* kx_band can be 0 (kx_prev on the first frame's leading slots),  which would make kx_band - 1 + bsco_band index X[l][-1]. There is no band below 0 to add in that case, so skip the overlap. */
+            /* kx_band can be 0 (kx_prev on the first frame's leading slots),  which would make kx_band - 1 + bsco_band index X[l][-1]. There is no band below 0 to add in that case, so skip the
+             * overlap. */
             if (kx_band + bsco_band > 0) { QMF_RE(X[l][kx_band - 1 + bsco_band]) += QMF_RE(sbr->Xsbr[ch][l + sbr->tHFAdj][kx_band - 1 + bsco_band]); }
     #endif
         }
