@@ -4,8 +4,8 @@
 
     Created on: 28.10.2018                                                                                                  */
 char audioI2SVers[] = "\
-    Version 4.0.0c5                                                                                                                         ";
-/*  Updated on: Aug 19, 2026
+    Version 4.0.0c8                                                                                                                         ";
+/*  Updated on: Aug 21, 2026
 
     Author: Wolle (schreibfaul1)
     Audio library for ESP32, ESP32-S3 or ESP32-P4
@@ -2636,7 +2636,11 @@ int Audio::read_ID3_Header(uint8_t* data, size_t len) {
                 m_ID3Hdr.SYLT.text_encoding = syltBuff[0];
                 memcpy(m_ID3Hdr.SYLT.lang, syltBuff.get() + 1, 3);
                 m_ID3Hdr.SYLT.lang[3] = '\0';
-                info(*this, evt_info, "Lyrics: text_encoding: {}, language: {}, size {}", m_ID3Hdr.SYLT.text_encoding == 0 ? "ASCII" : m_ID3Hdr.SYLT.text_encoding == 3 ? "UTF-8" : "?", m_ID3Hdr.SYLT.lang, m_ID3Hdr.SYLT.size);
+                info(*this, evt_info, "Lyrics: text_encoding: {}, language: {}, size {}",
+                     m_ID3Hdr.SYLT.text_encoding == 0   ? "ASCII"
+                     : m_ID3Hdr.SYLT.text_encoding == 3 ? "UTF-8"
+                                                        : "?",
+                     m_ID3Hdr.SYLT.lang, m_ID3Hdr.SYLT.size);
                 m_ID3Hdr.SYLT.time_stamp_format = syltBuff[4];
                 m_ID3Hdr.SYLT.content_type = syltBuff[5];
 
@@ -2740,6 +2744,7 @@ int Audio::read_ID3_Header(uint8_t* data, size_t len) {
             int mode = (hdr >> 6) & 0x3; // 0=stereo,3=mono
             int samplerate = samplerate_table[versionID][samplerateIdx];
             int spf = samples_per_frame[versionID][layerIndex];
+            AUDIO_LOG_DEBUG("spf {}, versionID {}, layerIndex {}", spf, versionID, layerIndex);
 
             // Xing or Info Header present?
             int8_t mp3_xing = specialIndexOf(data, "Xing", 50); // VBR
@@ -2754,8 +2759,9 @@ int Audio::read_ID3_Header(uint8_t* data, size_t len) {
                 AUDIO_LOG_DEBUG("frames {}", frames);
                 uint32_t bytes = bigEndian(data + xingPos + 12, 4);
                 AUDIO_LOG_DEBUG("bytes {}", bytes);
-                m_audio_file_duration = (static_cast<uint64_t>(frames) * spf) / samplerate;
-                m_nominal_bitrate = (static_cast<uint64_t>(bytes) * 8) / m_audio_file_duration;
+                m_audio_file_duration = (static_cast<uint64_t>(frames) * spf) / samplerate; // may be 0 (if duration < 1s)
+                if (m_audio_file_duration) m_nominal_bitrate = (static_cast<uint64_t>(bytes) * 8) / m_audio_file_duration;
+                m_total_samples_in_file = m_audio_file_duration * samplerate;
             }
 
             if (m_nominal_bitrate == 0 && layerIndex == 1) { // no Xing/Info, Layer III
@@ -2764,10 +2770,10 @@ int Audio::read_ID3_Header(uint8_t* data, size_t len) {
                 size_t   pos = 0;
                 int      frameCount = 0;
 
-                while (pos + 4 <= len && frameCount < 100) {
+                while (pos + 4 <= len) {
                     uint32_t h = bigEndian(data + pos, 4);
 
-                    if ((h & 0xFFE00000) != 0xFFE00000) break;   // check sync
+                    if ((h & 0xFFE00000) != 0xFFE00000) break; // check sync
 
                     int ver = (h >> 19) & 0x3;
                     int layer = (h >> 17) & 0x3;
@@ -2807,8 +2813,10 @@ int Audio::read_ID3_Header(uint8_t* data, size_t len) {
                 }
 
                 if (frameCount > 0 && totalSamples > 0) {
-                    m_nominal_bitrate = (totalBytes * 8ULL * samplerate) / (totalSamples * 1000ULL);
-                    AUDIO_LOG_DEBUG("MP3 frame analysis: {} frames, {} bytes, bitrate {} kbit/s", frameCount, totalBytes, m_nominal_bitrate);
+                    if (totalSamples) m_nominal_bitrate = (totalBytes * 8ULL * samplerate) / totalSamples;
+                    if (m_nominal_bitrate) m_audio_file_duration = (static_cast<uint64_t>(m_audioDataSize) * 8ULL) / (static_cast<uint64_t>(m_nominal_bitrate));
+                    m_total_samples_in_file = m_audio_file_duration * samplerate;
+                    AUDIO_LOG_DEBUG("MP3 frame analysis: {} frames, {} bytes, bitrate {} bit/s, duration {} s", frameCount, totalBytes, m_nominal_bitrate, m_audio_file_duration);
                 }
             }
 
@@ -2919,7 +2927,9 @@ int Audio::read_M4A_Header(uint8_t* data, size_t len) {
             if (!m_m4aHdr.progressive) {
                 m_m4aHdr.mdat_startPos = m_m4aHdr.headerSize + 8;
                 m_m4aHdr.sizeof_mdat = atom_size.to_uint32(16);
-                if (atom_struct) { AUDIO_LOG_WARN("atom {} @ {}, size: {}, ends @ {}", atom_name.c_get(), m_m4aHdr.mdat_startPos, m_m4aHdr.sizeof_mdat, m_m4aHdr.mdat_startPos + m_m4aHdr.sizeof_mdat); }
+                if (atom_struct) {
+                    AUDIO_LOG_WARN("atom {} @ {}, size: {}, ends @ {}", atom_name.c_get(), m_m4aHdr.mdat_startPos, m_m4aHdr.sizeof_mdat, m_m4aHdr.mdat_startPos + m_m4aHdr.sizeof_mdat);
+                }
                 info(*this, evt_info, "Audiofile is non progressive");
                 m_m4aHdr.retvalue += m_m4aHdr.sizeof_mdat;
                 m_m4aHdr.headerSize += m_m4aHdr.sizeof_mdat;
@@ -4859,8 +4869,10 @@ void Audio::processWebFile() {
 
     if (m_resumeFilePos >= 0) { // we have a resume file position
         m_pwf.newFilePos = newInBuffStart(m_resumeFilePos);
-        if (m_pwf.newFilePos < 0) AUDIO_LOG_WARN("skip to new position was not successful");
-        else m_f_haveNewFilePos = true;
+        if (m_pwf.newFilePos < 0)
+            AUDIO_LOG_WARN("skip to new position was not successful");
+        else
+            m_f_haveNewFilePos = true;
         m_resumeFilePos = -1;
         m_f_allDataReceived = false;
         return;
@@ -6798,19 +6810,7 @@ void Audio::calculateVUlevel(int32_t* buff, size_t len) {
 
         m_f_first_vu_call = false;
 
-        m_vu_items.maxLeft = 0;
-        m_vu_items.maxRight = 0;
-
-        m_vu_items.sumL = 0;
-        m_vu_items.sumR = 0;
-
-        m_vu_items.samps_count = 0;
-
-        m_vu_items.barsHoldLeft_tmp = 0;
-        m_vu_items.barsHoldRight_tmp = 0;
-
-        m_vu_items.peakHoldLeft_tmp = 0;
-        m_vu_items.peakHoldRight_tmp = 0;
+        m_vu_items.reset();
 
         //--------------------------------------------------------------------------
         // VU update period
@@ -6838,10 +6838,10 @@ void Audio::calculateVUlevel(int32_t* buff, size_t len) {
         //--------------------------------------------------------------------------
 
         constexpr size_t VU_DELAY = 2;
-        m_vu_items.delay_bars_left.calloc(VU_DELAY + 1);
-        m_vu_items.delay_bars_right.calloc(VU_DELAY + 1);
-        m_vu_items.delay_peak_left.calloc(VU_DELAY + 1);
-        m_vu_items.delay_peak_right.calloc(VU_DELAY + 1);
+        m_vu_items.delay_bars_left.calloc(VU_DELAY);
+        m_vu_items.delay_bars_right.calloc(VU_DELAY);
+        m_vu_items.delay_peak_left.calloc(VU_DELAY);
+        m_vu_items.delay_peak_right.calloc(VU_DELAY);
         m_vu_items.delay_bars_left.fifo_reset();
         m_vu_items.delay_bars_right.fifo_reset();
         m_vu_items.delay_peak_left.fifo_reset();
@@ -8436,16 +8436,32 @@ void Audio::audioTask() {
     vTaskDelete(nullptr); // Delete this task
 }
 
+void Audio::fade_out_levels(bool fade) {
+    constexpr uint16_t CNT = 50;
+    if (!fade) {
+        m_fading_counter = CNT;
+        return;
+    } else {
+        if (m_fading_counter == 0) return;
+        if (m_fading_counter == CNT) { m_i2sWorkBuff.clear(); }
+        m_fading_counter--;
+        if (settings.VU_LEVEL) calculateVUlevel(m_i2sWorkBuff.get(), settings.DMA_FRAME_NUM * 2);
+        if (settings.SPECTRUM) calculateSpectrum(m_i2sWorkBuff.get(), settings.DMA_FRAME_NUM * 2);
+    }
+}
+
 void Audio::performAudioTask() {
     if (m_decoder) {
         xSemaphoreTake(mutex_audioTask, 0.3 * configTICK_RATE_HZ);
         playAudioData();
         xSemaphoreGive(mutex_audioTask);
         gain_ramp();
+        fade_out_levels(false);
         return;
     } else {
         gain_ramp();
         if (SamplesBuff.bufferFilled()) { playChunk(); }
+        fade_out_levels(true);
         vTaskDelay(50);
         return;
     }
