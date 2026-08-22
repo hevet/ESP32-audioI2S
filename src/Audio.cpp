@@ -4,7 +4,7 @@
 
     Created on: 28.10.2018                                                                                                  */
 char audioI2SVers[] = "\
-    Version 4.0.0d                                                                                                                         ";
+    Version 4.0.0e                                                                                                                         ";
 /*  Updated on: Aug 22, 2026
 
     Author: Wolle (schreibfaul1)
@@ -803,6 +803,7 @@ void Audio::setDefaults() {
     m_m3u8_host.reset();
     m_cab.reset();
     m_cat.reset();
+    m_content_type.reset();
 
     m_outBuff.clear();       // Clear OutputBuffer
     m_resamplesBuff.clear(); // Clear ResamplesBuff
@@ -5511,7 +5512,11 @@ lastToDo:
         m_dataMode = AUDIO_PLAYLISTINIT; // playlist expected
         // AUDIO_LOG_INFO("now parse playlist");
     } else {
-        AUDIO_LOG_INFO("unknown content found at: {}", m_currentHost.c_get());
+        if (m_content_type == "text/html") {
+            AUDIO_LOG_INFO("{} is probably an HTML page", m_currentHost.c_get());
+        } else {
+            AUDIO_LOG_INFO("unknown content found at: {}, content type is: {}", m_currentHost.c_get(), m_content_type);
+        }
         goto exit;
     }
 
@@ -5613,6 +5618,7 @@ bool Audio::initializeDecoder() {
 }
 // —————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
 bool Audio::parseContentType(ps_ptr<char> ct) {
+    m_content_type = ct;
     enum : int { CT_NONE, CT_MP3, CT_AAC, CT_M4A, CT_WAV, CT_FLAC, CT_PLS, CT_M3U, CT_ASX, CT_M3U8, CT_TXT, CT_AACP, CT_OPUS, CT_OGG, CT_VORBIS };
 
     // MIME types and their CT_Val values
