@@ -481,7 +481,7 @@ class Audio {
         M4A_OKAY = 100,
     };
     enum : int { CODEC_NONE = 0, CODEC_WAV = 1, CODEC_MP3 = 2, CODEC_AAC = 3, CODEC_M4A = 4, CODEC_FLAC = 5, CODEC_OPUS = 6, CODEC_VORBIS = 7, CODEC_OGG = 8 };
-    const char* codecname[10] = {"unknown", "WAV", "MP3", "AAC", "M4A", "FLAC", "OPUS", "VORBIS", "OGG"};
+    const char* codecname[10] = {" ", "WAV", "MP3", "AAC", "M4A", "FLAC", "OPUS", "VORBIS", "OGG"};
     const float est_compression[10] = {1.0f, 1.0f, 11.0f, 9.0f, 9.0f, 2.0f, 12.0f, 8.0f, 1.0f};
     enum : int { ST_NONE = 0, ST_WEBFILE = 1, ST_WEBSTREAM = 2 };
     const char* streamTypeStr[3] = {"NONE", "WEBFILE", "WEBSTREAM"};
