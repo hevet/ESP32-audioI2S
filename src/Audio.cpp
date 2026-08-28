@@ -4,8 +4,8 @@
 
     Created on: 28.10.2018                                                                                                  */
 char audioI2SVers[] = "\
-    Version 4.0.0g                                                                                                                         ";
-/*  Updated on: Aug 26, 2026
+    Version 4.0.0h                                                                                                                         ";
+/*  Updated on: Aug 28, 2026
 
     Author: Wolle (schreibfaul1)
     Audio library for ESP32, ESP32-S3 or ESP32-P4
@@ -6231,11 +6231,6 @@ int Audio::sendBytes(uint8_t* data, size_t len) {
 }
 // —————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
 uint32_t Audio::calculate_average_bitrate(uint64_t sum_bytes_in, uint64_t sum_samples) {
-    if (m_cab.counter == 0) {
-        m_cab.estimated_bitrate = m_channels * m_i2s_items.sampleRate * m_bitsPerSample / est_compression[m_codec];
-        AUDIO_LOG_DEBUG("estimated bitrate {}", m_cab.estimated_bitrate);
-    }
-    m_cab.counter++;
 
     if (sum_samples) m_cab.average_bitrate = sum_bytes_in * 8 * m_i2s_items.sampleRate / sum_samples;
 
@@ -6268,7 +6263,7 @@ void Audio::calculateAudioTime(uint16_t bytes_decoder_in, uint16_t samples_decod
     m_samples_since_start += samples_decoder_out;
 
     m_avr_bitrate = calculate_average_bitrate(m_cat.sum_bytes_in, m_cat.sum_samples);
-    if (m_avr_bitrate) {
+    if (m_avr_bitrate && m_audioDataSize && isFile()) {
         m_avr_file_duration = round(((float)m_audioDataSize * 8 / m_avr_bitrate));
         m_avr_samples_in_file = m_avr_file_duration * m_i2s_items.sampleRate;
     }
@@ -7054,7 +7049,14 @@ void Audio::gain_ramp() {
     else if (m_audio_items.cur_volume > m_audio_items.volume_steps)
         m_audio_items.cur_volume = m_audio_items.volume_steps;
 
-    calculateVolumeLimits();
+    // calculateVolumeLimits() is expensive (powf()); skip when nothing changed since last tick
+    if (!m_limiterComputed || m_audio_items.cur_volume != m_lastLimiterVolume ||
+        m_audio_items.balance != m_lastLimiterBalance) {
+        calculateVolumeLimits();
+        m_lastLimiterVolume  = m_audio_items.cur_volume;
+        m_lastLimiterBalance = m_audio_items.balance;
+        m_limiterComputed    = true;
+    }
 }
 // —————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
 void Audio::calculateVolumeLimits() { // is calculated when the volume or balance changes
