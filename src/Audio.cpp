@@ -4,8 +4,8 @@
 
     Created on: 28.10.2018                                                                                                  */
 char audioI2SVers[] = "\
-    Version 4.0.0r                                                                                                                         ";
-/*  Updated on: Sep 10, 2026
+    Version 4.0.0s                                                                                                                         ";
+/*  Updated on: Sep 15, 2026
 
     Author: Wolle (schreibfaul1)
     Audio library for ESP32, ESP32-S3 or ESP32-P4
@@ -3944,7 +3944,7 @@ void Audio::loop() {
                     m_lVar.count = 0;
                 }
                 break;
-            case AUDIO_PLAYLISTINIT: readPlayListData(); break;
+            case AUDIO_PLAYLISTINIT: if(!readPlayListData()) stopSong(); break;
             case AUDIO_PLAYLISTDATA:
                 if (m_playlistFormat == FORMAT_M3U) httpPrint(parsePlaylist_M3U().c_get());
                 if (m_playlistFormat == FORMAT_PLS) httpPrint(parsePlaylist_PLS().c_get());
@@ -4048,7 +4048,7 @@ bool Audio::readPlayListData() {
             goto exit;
         }
         plSize = chunkLen; // chunkSize is known
-    } else if (plSize) {
+    } else if (m_audioFileSize) {
         plSize = m_audioFileSize; // fileSize is known
     } else {
         plSize = m_client->available(); // only avBytes is known
@@ -4263,6 +4263,7 @@ ps_ptr<char> Audio::parsePlaylist_PLS() {
         if (isPLS) {
             if (m_playlistContent[i].starts_with_icase("File")) {
                 pos = m_playlistContent[i].index_of("=");
+                if (pos < 4) continue;   // no '=' found, or line too short — skip this line safely
                 seq_str = m_playlistContent[i].substr(4, pos - 4);
                 seqNr = m_playlistContent[i].substr(4, pos - 4).to_int32();
                 entryNr = sequenceNr_to_entryNr(seqNr);
