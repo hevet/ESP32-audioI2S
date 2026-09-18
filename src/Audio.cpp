@@ -3944,7 +3944,9 @@ void Audio::loop() {
                     m_lVar.count = 0;
                 }
                 break;
-            case AUDIO_PLAYLISTINIT: if(!readPlayListData()) stopSong(); break;
+            case AUDIO_PLAYLISTINIT:
+                if (!readPlayListData()) stopSong();
+                break;
             case AUDIO_PLAYLISTDATA:
                 if (m_playlistFormat == FORMAT_M3U) httpPrint(parsePlaylist_M3U().c_get());
                 if (m_playlistFormat == FORMAT_PLS) httpPrint(parsePlaylist_PLS().c_get());
@@ -4263,7 +4265,7 @@ ps_ptr<char> Audio::parsePlaylist_PLS() {
         if (isPLS) {
             if (m_playlistContent[i].starts_with_icase("File")) {
                 pos = m_playlistContent[i].index_of("=");
-                if (pos < 4) continue;   // no '=' found, or line too short — skip this line safely
+                if (pos < 4) continue; // no '=' found, or line too short — skip this line safely
                 seq_str = m_playlistContent[i].substr(4, pos - 4);
                 seqNr = m_playlistContent[i].substr(4, pos - 4).to_int32();
                 entryNr = sequenceNr_to_entryNr(seqNr);
@@ -5048,8 +5050,7 @@ nextRound:
             if (m_pwsst.ts_packetStart == 0 && m_pwsst.ts_packetLength == 188) { // dummy packet, ttps://livepeercdn.studio/hls/85c28sa2o8wppm58/index.m3u8?video=false
                 AUDIO_LOG_DEBUG("dummy");
                 m_pwsst.f_nextRound = true;
-            }
-            else if (m_pwsst.ts_packetLength) {
+            } else if (m_pwsst.ts_packetLength) {
                 size_t ws = InBuff.writeSpace();
                 if (ws >= m_pwsst.ts_packetLength) {
                     memcpy(InBuff.getWritePtr(), m_pwsst.ts_packet.get() + m_pwsst.ts_packetStart, m_pwsst.ts_packetLength);
@@ -5411,7 +5412,13 @@ Audio::HeaderResult Audio::parseHeaderLine(ps_ptr<char> name, ps_ptr<char> value
     }
 
     else if (name.equals_icase("connection")) {
-        if (value.contains_with_icase("close")) { m_f_connectionClose = true; }
+        if (value.contains_with_icase("close")) {
+            m_f_connectionClose = true;
+            info(*this, evt_info, "server connection mode: close");
+        } else {
+            m_f_connectionClose = false;
+            info(*this, evt_info, "server connection mode: {}", value.c_get());
+        }
         return HeaderResult::Continue;
     }
 
@@ -7969,40 +7976,45 @@ fail:
 // —————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————-
 boolean Audio::streamDetection(uint32_t bytesAvail) {
 
-    if (!m_client->connected()) {
-        info(*this, evt_info, "Stream lost");
-        connecttohost(m_lastHost.get());
-        return false;
-    }
-
     if (InBuff.bufferFilled() < InBuff.getMaxBlockSize()) {
-        if (m_sdet.cnt_slow == 0) m_sdet.tmr_slow = millis();
+        if (m_sdet.cnt_slow == 0) { m_sdet.tmr_slow = millis(); }
         m_sdet.cnt_slow++;
     } else {
         m_sdet.cnt_slow = 0;
         m_sdet.cnt_lost = 0;
-        return true;
     }
 
-    // if within one second the content of the audio buffer falls below the size of an audio frame 100 times,
-    // issue a message
+    // Low buffer for 2 seconds?
     if (m_sdet.cnt_slow && m_sdet.tmr_slow + 2000 < millis()) {
+
         m_sdet.tmr_slow = millis();
+
         info(*this, evt_info, "slow stream");
+
         m_sdet.cnt_slow = 0;
         m_sdet.cnt_lost++;
     }
 
+    // If bytes are still arriving the stream is NOT lost.
     if (bytesAvail) { m_sdet.cnt_lost = 0; }
-    if (InBuff.bufferFilled() > InBuff.getMaxBlockSize() * 2) return true; // enough data available to play
 
-    // if no audio data is received within 10 seconds, a new connection attempt is started.
-    if (m_sdet.cnt_lost == 5) {
-        info(*this, evt_info, "Stream lost");
+    // buffer sufficiently full
+    if (InBuff.bufferFilled() > InBuff.getMaxBlockSize() * 2) { return true; }
+
+    // Só depois de vários períodos realmente sem áudio
+    // consideramos o stream perdido.
+    if (m_sdet.cnt_lost >= 5) {
+
+        info(*this, evt_info, "Stream lost -> reconnect");
+
         connecttohost(m_lastHost.get());
+
         m_sdet.cnt_slow = 0;
         m_sdet.cnt_lost = 0;
+
+        return false;
     }
+
     return false;
 }
 // —————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————-
