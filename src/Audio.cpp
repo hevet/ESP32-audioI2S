@@ -4,8 +4,8 @@
 
     Created on: 28.10.2018                                                                                                  */
 char audioI2SVers[] = "\
-    Version 4.0.1g                                                                                                                         ";
-/*  Updated on: Nov 21, 2026
+    Version 4.0.1h                                                                                                                         ";
+/*  Updated on: Nov 24, 2026
 
     Author: Wolle (schreibfaul1)
     Audio library for ESP32, ESP32-S3 or ESP32-P4
@@ -5533,15 +5533,19 @@ uint32_t Audio::decodeContinue(int8_t res, uint8_t* data, int32_t bytesDecoded, 
 
     if (m_codec == CODEC_FLAC) {
         if (res == FlacDecoder::FLAC_PARSE_OGG_DONE) return bytesDecoded;
+        if (res == FlacDecoder::FLAC_CONTINUE) return bytesDecoded;
         if (res == FlacDecoder::FLAC_DECODE_FRAMES_LOOP) return bytesDecoded;
     } // nothing to play
     if (m_codec == CODEC_OPUS) {
         if (res == OpusDecoder::OPUS_PARSE_OGG_DONE) return bytesDecoded;
+        if (res == OpusDecoder::OPUS_LAST_PAGE) return bytesDecoded;
+        if (res == OpusDecoder::OPUS_CONTINUE) return bytesDecoded;
         if (res == OpusDecoder::OPUS_END) return bytesDecoded;
     } // nothing to play
     if (m_codec == CODEC_VORBIS) {
         if (res == VorbisDecoder::VORBIS_PARSE_OGG_DONE) return bytesDecoded;
         if (res == VorbisDecoder::VORBIS_COMMENT_DONE) return bytesDecoded;
+        if (res == VorbisDecoder::VORBIS_CONTINUE) return bytesDecoded;
         if (res == VorbisDecoder::VORBIS_COMMENT_NEED_MORE) return bytesDecoded;
     } // nothing to play
     if (m_codec == CODEC_MP3) {
@@ -5594,7 +5598,7 @@ int Audio::sendBytes(uint8_t* data, size_t len) {
     if (res < 0) { return decodeError(res, data, bytesDecoded); }                        // Error, skip the frame...
     if (res > 99) { return decodeContinue(res, data, bytesDecoded, &m_sbyt.bytesLeft); } // decoder needs more data...
 
-    if ((bytesDecoded == 0) && (m_codec != CODEC_VORBIS && m_codec != CODEC_FLAC)) { // unlikely framesize, exept VORBIS decodes lastSegmentTable
+    if ((bytesDecoded == 0) && (!m_f_ogg)) { // unlikely framesize, exept OGG decodes lastSegmentTable
         info(*this, Audio::evt_info, "framesize is 0, start decoding again");
         m_f_playing = false; // seek for new syncword
         // we're here because there was a wrong sync word so skip one byte and seek for the next
