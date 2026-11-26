@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Arduino.h"
+#include "esp_psram.h"
 #include <algorithm>
 #include <cerrno>
 #include <cmath>
@@ -14,22 +15,34 @@
 #include <utility>
 #include <vector>
 
+namespace {
+#define ANSI_ESC_RESET   "\033[0m"
+#define ANSI_ESC_BLACK   "\033[30m"
+#define ANSI_ESC_RED     "\033[31m"
+#define ANSI_ESC_GREEN   "\033[32m"
+#define ANSI_ESC_YELLOW  "\033[33m"
+#define ANSI_ESC_BLUE    "\033[34m"
+#define ANSI_ESC_MAGENTA "\033[35m"
+#define ANSI_ESC_CYAN    "\033[36m"
+#define ANSI_ESC_WHITE   "\033[37m"
+} // namespace
+
 #ifndef PS_PTR_CLASS
     #define PS_PTR_CLASS 1
 
 /** Auxiliary functions for using Unique Pointers in ESP32 PSRAM **/
 
 // —————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
-// PSRAM Deleter (ps_malloc → free)
+// PSRAM Deleter (heap_caps_malloc(size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);   → free)
 // Deleter for PSRAM
 
 // single objekt (int -> PSRAM)
 // auto pint = ps_make_unique<int>(123);
-// Serial.printf("Wert: %d\n", *pint);
+// printf("Wert: %d\n", *pint);
 
 // single objekt (std::string -> PSRAM)
 // auto pstr = ps_make_unique<std::string>("Hallo PSRAM");
-// Serial.printf("String: %s\n", pstr->c_str());
+// printf("String: %s\n", pstr->c_str());
 
 // array (char-Buffer)
 // auto buf = ps_make_unique<char>(256);
@@ -50,7 +63,7 @@ struct PsramDeleter {
 // create individual object in PSRAM
 template <typename T, typename... Args> std::unique_ptr<T, PsramDeleter> ps_make_unique(Args&&... args) {
     // rohen Speicher im PSRAM holen
-    void* raw = ps_malloc(sizeof(T));
+    void* raw = heap_caps_malloc(sizeof(T), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     if (!raw) { throw std::bad_alloc(); }
 
     // Objekt mit placement-new konstruieren
@@ -62,9 +75,9 @@ template <typename T, typename... Args> std::unique_ptr<T, PsramDeleter> ps_make
 
 // create an array of objects in PSRAM
 template <typename T> std::unique_ptr<T[], PsramDeleter> ps_make_unique(size_t count) {
-    T* raw = static_cast<T*>(ps_malloc(sizeof(T) * count));
+    T* raw = static_cast<T*>(heap_caps_malloc(sizeof(T) * count, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
     if (!raw) {
-        printf("OOM: ps_malloc failed (%zu bytes)\n", sizeof(T) * count);
+        printf("[%s:%i]" ANSI_ESC_RED " OOM: heap_caps_malloc(size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);   failed (%zu bytes)" ANSI_ESC_RESET "\n", __FILE__, __LINE__, sizeof(T) * count);
         return std::unique_ptr<T[], PsramDeleter>(nullptr); // kein throw
     }
     return std::unique_ptr<T[], PsramDeleter>(raw);
@@ -102,15 +115,15 @@ class ps_ptr {
         }
         if (new_name) {
             std::size_t len = std::strlen(new_name) + 1;
-            if (psramFound()) {
-                name = static_cast<char*>(ps_malloc(len));
+            if (esp_psram_is_initialized()) {
+                name = static_cast<char*>(heap_caps_malloc(len, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
             } else {
                 name = static_cast<char*>(malloc(len));
             }
             if (name) {
                 std::memcpy(name, new_name, len);
             } else {
-                printf("OOM: failed to allocate %zu bytes for name %s\n", len, new_name);
+                printf("[%s:%i]" ANSI_ESC_RED " OOM: failed to allocate %zu bytes for name %s" ANSI_ESC_RESET "\n", __FILE__, __LINE__, len, new_name);
             }
         }
     }
@@ -119,9 +132,9 @@ class ps_ptr {
 
     ~ps_ptr() { // destructor
         if (mem) {
-            // log_w("Destructor called for %s: Freeing %zu bytes at %p", name ? name : "unnamed", allocated_size * sizeof(T), mem.get());
+            // printf("[%s:%i]" ANSI_ESC_YELLOW " Destructor called for %s: Freeing %zu bytes at %p" ANSI_ESC_RESET "\n", __FILE__, __LINE__, name ? name : "unnamed", allocated_size * sizeof(T), mem.get());
         } else {
-            // log_w("Destructor called for %s: No memory to free.", name ? name : "unnamed");
+            // printf("[%s:%i]" ANSI_ESC_YELLOW " Destructor called for %s: No memory to free." ANSI_ESC_RESET "\n", __FILE__, __LINE__, name ? name : "unnamed");
         }
         if (name) {
             free(name);
@@ -195,12 +208,12 @@ class ps_ptr {
         using Unsigned = std::make_unsigned_t<U>;
 
         if (!mem || !get()) {
-            log_e("to_integer: No valid string data");
+            printf("[%s:%i]" ANSI_ESC_RED " to_integer: No valid string data" ANSI_ESC_RESET "\n", __FILE__, __LINE__);
             return 0;
         }
 
         if (base != 10 && base != 16) {
-            log_e("to_integer: Unsupported base %i", base);
+            printf("[%s:%i]" ANSI_ESC_RED " to_integer: Unsupported base %i" ANSI_ESC_RESET "\n", __FILE__, __LINE__, base);
             return 0;
         }
 
@@ -208,7 +221,7 @@ class ps_ptr {
         const char* p = str;
 
         if (*p == '\0') {
-            log_e("to_integer: Empty string");
+            printf("[%s:%i]" ANSI_ESC_RED " to_integer: Empty string" ANSI_ESC_RESET "\n", __FILE__, __LINE__);
             return 0;
         }
 
@@ -235,7 +248,7 @@ class ps_ptr {
 
         // A sign or 0x must be followed by at least one digit
         if (*p == '\0') {
-            log_e("to_integer: Invalid numeric value in '%s'", str);
+            printf("[%s:%i]" ANSI_ESC_RED " to_integer: Invalid numeric value in '%s'" ANSI_ESC_RESET "\n", __FILE__, __LINE__, str);
             return 0;
         }
 
@@ -245,7 +258,7 @@ class ps_ptr {
 
         if constexpr (std::is_unsigned_v<U>) {
             if (negative) {
-                log_e("to_integer: Negative value '%s' is not valid", str);
+                printf("[%s:%i]" ANSI_ESC_RED " to_integer: Negative value '%s' is not valid" ANSI_ESC_RESET "\n", __FILE__, __LINE__, str);
                 return 0;
             }
         }
@@ -286,12 +299,12 @@ class ps_ptr {
             } else if (base == 16 && *p >= 'A' && *p <= 'F') {
                 digit = static_cast<Unsigned>(*p - 'A' + 10);
             } else {
-                log_e("to_integer: Invalid numeric value in '%s' for base %i", str, base);
+                printf("[%s:%i]" ANSI_ESC_RED " to_integer: Invalid numeric value in '%s' for base %i" ANSI_ESC_RESET "\n", __FILE__, __LINE__, str, base);
                 return 0;
             }
 
             if (result > (limit - digit) / base) {
-                log_e("to_integer: Value in '%s' exceeds range", str);
+                printf("[%s:%i]" ANSI_ESC_RED " to_integer: Value in '%s' exceeds range" ANSI_ESC_RESET "\n", __FILE__, __LINE__, str);
                 return 0;
             }
 
@@ -330,15 +343,15 @@ class ps_ptr {
 
     bool alloc(std::size_t size, const char* alloc_name = nullptr, bool usePSRAM = true) {
         size = (size + 15) & ~15;                        // Align to 16 bytes
-        if (psramFound() && usePSRAM) {                  // Check at the runtime whether PSRAM is available
-            mem.reset(static_cast<T*>(ps_malloc(size))); // <--- Important!
+        if (esp_psram_is_initialized() && usePSRAM) {                  // Check at the runtime whether PSRAM is available
+            mem.reset(static_cast<T*>(heap_caps_malloc(size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT))); // <--- Important!
         } else {
             mem.reset(static_cast<T*>(malloc(size))); // <--- Important!
         }
         allocated_size = size;
         if (alloc_name) { set_name(alloc_name); }
         if (!mem) {
-            printf("OOM: failed to allocate %zu bytes for %s\n", size, name ? name : "unnamed");
+            printf("[%s:%i]" ANSI_ESC_RED " OOM: failed to allocate %zu bytes for %s" ANSI_ESC_RESET "\n", __FILE__, __LINE__, size, name ? name : "unnamed");
             return false;
         }
         return true;
@@ -347,8 +360,8 @@ class ps_ptr {
     bool alloc(const char* alloc_name = nullptr) { // alloc for single objects/structures
         reset();                                   // Freigabe des zuvor gehaltenen Speichers
         void* raw_mem = nullptr;
-        if (psramFound()) {                 // Check at the runtime whether PSRAM is available
-            raw_mem = ps_malloc(sizeof(T)); // allocated im PSRAM
+        if (esp_psram_is_initialized()) {                 // Check at the runtime whether PSRAM is available
+            raw_mem = heap_caps_malloc(sizeof(T), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT); // allocated im PSRAM
         } else {
             raw_mem = malloc(sizeof(T)); // allocated im RAM
         }
@@ -357,7 +370,7 @@ class ps_ptr {
             mem.reset(new (raw_mem) T()); // placed new: constructor of T is called up in PSRAM
             allocated_size = sizeof(T);
         } else {
-            printf("OOM: failed to allocate %zu bytes for %s\n", sizeof(T), name ? name : "unnamed");
+            printf("[%s:%i]" ANSI_ESC_RED " OOM: failed to allocate %zu bytes for %s" ANSI_ESC_RESET "\n", __FILE__, __LINE__, sizeof(T), name ? name : "unnamed");
             allocated_size = 0; // make sure that allocated_size is 0 if allocation fails
             return false;
         }
@@ -379,8 +392,8 @@ class ps_ptr {
         if (alloc_name) { set_name(alloc_name); }
 
         void* raw_mem = nullptr;
-        if (psramFound() && usePSRAM) {
-            raw_mem = ps_malloc(total_size);
+        if (esp_psram_is_initialized() && usePSRAM) {
+            raw_mem = heap_caps_malloc(total_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
         } else {
             raw_mem = malloc(total_size);
         }
@@ -391,7 +404,7 @@ class ps_ptr {
             // Important: number of actual FIFO elements
             m_num_elements = num_elements;
         } else {
-            printf("OOM: failed to calloc %zu bytes for %s\n", total_size, name ? name : "unnamed");
+            printf("[%s:%i]" ANSI_ESC_RED " OOM: failed to calloc %zu bytes for %s" ANSI_ESC_RESET "\n", __FILE__, __LINE__, total_size, name ? name : "unnamed");
             allocated_size = 0;
             m_num_elements = 0;
             return false;
@@ -446,13 +459,13 @@ class ps_ptr {
 
     void realloc(size_t new_size) {
         void* new_mem = nullptr;
-        if (psramFound()) { // Check at the runtime whether PSRAM is available
-            new_mem = ps_malloc(new_size);
+        if (esp_psram_is_initialized()) { // Check at the runtime whether PSRAM is available
+            new_mem = heap_caps_malloc(new_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
         } else {
             new_mem = malloc(new_size);
         }
         if (!new_mem) {
-            printf("OOM: failed to realloc %zu bytes for %s\n", new_size, name ? name : "unnamed");
+            printf("[%s:%i]" ANSI_ESC_RED " OOM: failed to realloc %zu bytes for %s" ANSI_ESC_RESET "\n", __FILE__, __LINE__, new_size, name ? name : "unnamed");
             return;
         }
 
@@ -530,7 +543,7 @@ class ps_ptr {
         requires(sizeof(U) == sizeof(T))
     void copy_from(const U* src, std::size_t count, bool zeroTerminate = true) {
         if (!src) {
-            log_e("arg. is null");
+            printf("[%s:%i]" ANSI_ESC_RED " arg. is null" ANSI_ESC_RESET "\n", __FILE__, __LINE__);
             return;
         }
         std::size_t elements = count + (zeroTerminate ? 1 : 0);
@@ -544,7 +557,7 @@ class ps_ptr {
         requires(std::is_same_v<T, char> && (std::is_same_v<U, char> || std::is_same_v<U, uint8_t>))
     size_t copy_from(const U* src) {
         if (!src) {
-            log_e("arg. is null");
+            printf("[%s:%i]" ANSI_ESC_RED " arg. is null" ANSI_ESC_RESET "\n", __FILE__, __LINE__);
             return 0;
         }
         std::size_t len = std::strlen(reinterpret_cast<const char*>(src));
@@ -564,7 +577,7 @@ class ps_ptr {
         requires(std::is_same_v<U, char> || std::is_same_v<U, uint8_t>)
     size_t copy_from_utf16(const U* src, bool is_big_endian = false) {
         if (!src) {
-            log_e("arg. is null");
+            printf("[%s:%i]" ANSI_ESC_RED " arg. is null" ANSI_ESC_RESET "\n", __FILE__, __LINE__);
             return 0;
         }
         std::vector<char> out;
@@ -598,7 +611,7 @@ class ps_ptr {
             // Prüfe auf Surrogatenpaare
             if (ch >= 0xD800 && ch <= 0xDBFF) { // High surrogate
                 if ((i + 1 >= std::numeric_limits<size_t>::max()) || (src[i] == 0x00 && src[i + 1] == 0x00)) {
-                    log_e("Invalid surrogate pair: missing low surrogate");
+                    printf("[%s:%i]" ANSI_ESC_RED " Invalid surrogate pair: missing low surrogate" ANSI_ESC_RESET "\n", __FILE__, __LINE__);
                     break;
                 }
                 uint16_t ch2;
@@ -608,13 +621,13 @@ class ps_ptr {
                     ch2 = (src[i + 1] << 8) | src[i];
                 }
                 if (ch2 < 0xDC00 || ch2 > 0xDFFF) {
-                    log_e("Invalid surrogate pair: invalid low surrogate");
+                    printf("[%s:%i]" ANSI_ESC_RED " Invalid surrogate pair: invalid low surrogate" ANSI_ESC_RESET "\n", __FILE__, __LINE__);
                     break;
                 }
                 i += 2;
                 codepoint = 0x10000 + ((ch - 0xD800) << 10) + (ch2 - 0xDC00);
             } else if (ch >= 0xDC00 && ch <= 0xDFFF) {
-                log_e("Invalid surrogate pair: unexpected low surrogate");
+                printf("[%s:%i]" ANSI_ESC_RED " Invalid surrogate pair: unexpected low surrogate" ANSI_ESC_RESET "\n", __FILE__, __LINE__);
                 break;
             }
 
@@ -634,7 +647,7 @@ class ps_ptr {
                 out.push_back(0x80 | ((codepoint >> 6) & 0x3F));
                 out.push_back(0x80 | (codepoint & 0x3F));
             } else {
-                log_e("Invalid codepoint");
+                printf("[%s:%i]" ANSI_ESC_RED " Invalid codepoint" ANSI_ESC_RESET "\n", __FILE__, __LINE__);
                 break;
             }
         }
@@ -652,7 +665,7 @@ class ps_ptr {
         requires(sizeof(U) == 1)
     size_t copy_from_iso8859_1(const U* src) {
         if (!src) {
-            log_e("arg. is null");
+            printf("[%s:%i]" ANSI_ESC_RED " arg. is null" ANSI_ESC_RESET "\n", __FILE__, __LINE__);
             return 0;
         }
         std::vector<char> out;
@@ -691,7 +704,7 @@ class ps_ptr {
         if (strlen() == 0) return;
         static_assert(std::is_same_v<T, char>, "urldecode() is only valid for ps_ptr<char>");
         if (!mem || !get()) {
-            log_e("urldecode: No valid string data");
+            printf("[%s:%i]" ANSI_ESC_RED " urldecode: No valid string data" ANSI_ESC_RESET "\n", __FILE__, __LINE__);
             return;
         }
 
@@ -780,13 +793,13 @@ class ps_ptr {
         // Alten Speicher übernehmen
         char* old_data = static_cast<char*>(mem.release());
 
-        if (psramFound()) {                                 // Check at the runtime whether PSRAM is available
-            mem.reset(static_cast<T*>(ps_malloc(new_len))); // <--- Important!
+        if (esp_psram_is_initialized()) {                                 // Check at the runtime whether PSRAM is available
+            mem.reset(static_cast<T*>(heap_caps_malloc(new_len, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT))); // <--- Important!
         } else {
             mem.reset(static_cast<T*>(malloc(new_len)));
         }
         if (!mem) {
-            printf("OOM: append() failed for %zu bytes\n", new_len);
+            printf("[%s:%i]" ANSI_ESC_RED " OOM: append() failed for %zu bytes" ANSI_ESC_RESET "\n", __FILE__, __LINE__, new_len);
             return;
         }
 
@@ -817,13 +830,13 @@ class ps_ptr {
 
         char* old_data = static_cast<char*>(mem.release());
 
-        if (psramFound()) { // Check at the runtime whether PSRAM is available
-            mem.reset(static_cast<T*>(ps_malloc(new_len)));
+        if (esp_psram_is_initialized()) { // Check at the runtime whether PSRAM is available
+            mem.reset(static_cast<T*>(heap_caps_malloc(new_len, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)));
         } else {
             mem.reset(static_cast<T*>(malloc(new_len)));
         }
         if (!mem) {
-            printf("OOM: append(len) failed for %zu bytes\n", new_len);
+            printf("[%s:%i]" ANSI_ESC_RED " OOM: append(len) failed for %zu bytes" ANSI_ESC_RESET "\n", __FILE__, __LINE__, new_len);
             return;
         }
 
@@ -849,14 +862,14 @@ class ps_ptr {
 
         char* old_data = static_cast<char*>(mem.release());
 
-        if (psramFound()) {
-            mem.reset(static_cast<T*>(ps_malloc(new_len)));
+        if (esp_psram_is_initialized()) {
+            mem.reset(static_cast<T*>(heap_caps_malloc(new_len, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)));
         } else {
             mem.reset(static_cast<T*>(malloc(new_len)));
         }
 
         if (!mem) {
-            printf("OOM: append(ps_ptr) failed for %zu bytes\n", new_len);
+            printf("[%s:%i]" ANSI_ESC_RED " OOM: append(ps_ptr) failed for %zu bytes" ANSI_ESC_RESET "\n", __FILE__, __LINE__, new_len);
             if (old_data) free(old_data);
             return;
         }
@@ -905,13 +918,13 @@ class ps_ptr {
         size_t old_len = old_data ? std::strlen(old_data) : 0;
         size_t new_size = new_cap + 1; // +1 für '\0'
 
-        if (psramFound())
-            mem.reset(static_cast<char*>(ps_malloc(new_size)));
+        if (esp_psram_is_initialized())
+            mem.reset(static_cast<char*>(heap_caps_malloc(new_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)));
         else
             mem.reset(static_cast<char*>(malloc(new_size)));
 
         if (!mem) {
-            printf("OOM: reserve(%zu) failed\n", new_size);
+            printf("[%s:%i]" ANSI_ESC_RED " OOM: reserve(%zu) failed" ANSI_ESC_RESET "\n", __FILE__, __LINE__, new_size);
             if (old_data) free(old_data);
             return;
         }
@@ -1101,7 +1114,7 @@ class ps_ptr {
         size_t placeholder_count = count_placeholders(fmt);
 
         if (placeholder_count != arg_count) {
-            printf("assignf(): \033[31m placeholder mismatch (expected %zu, got %zu), content: '%s' \033[0m\n", placeholder_count, arg_count, fmt);
+            printf("[%s:%i]" ANSI_ESC_YELLOW " assignf(): placeholder mismatch (expected %zu, got %zu), content: '%s'" ANSI_ESC_RESET "\n", __FILE__, __LINE__, placeholder_count, arg_count, fmt);
             return;
         }
 
@@ -1114,7 +1127,7 @@ class ps_ptr {
         alloc(tmp.size() + 1);
 
         if (!mem) {
-            printf("OOM: assignf() failed for %zu bytes\n", tmp.size() + 1);
+            printf("[%s:%i]" ANSI_ESC_RED " OOM: assignf() failed for %zu bytes" ANSI_ESC_RESET "\n", __FILE__, __LINE__, tmp.size() + 1);
             return;
         }
 
@@ -1143,7 +1156,7 @@ class ps_ptr {
         size_t placeholder_count = count_placeholders(fmt);
 
         if (placeholder_count != arg_count) {
-            printf("appendf(): \033[31m placeholder mismatch (expected %zu, got %zu), content: '%s' \033[0m\n", placeholder_count, arg_count, fmt);
+            printf("[%s:%i]" ANSI_ESC_YELLOW " appendf(): placeholder mismatch (expected %zu, got %zu), content: '%s'" ANSI_ESC_RESET "\n", __FILE__, __LINE__, placeholder_count, arg_count, fmt);
             return;
         }
 
@@ -1156,7 +1169,7 @@ class ps_ptr {
         reset();
         alloc(new_len);
         if (!mem) {
-            printf("OOM: appendf1() failed for %zu bytes\n", new_len);
+            printf("[%s:%i]" ANSI_ESC_RED " OOM: appendf1() failed for %zu bytes" ANSI_ESC_RESET "\n", __FILE__, __LINE__, new_len);
             if (old_data) { free(old_data); }
             return;
         }
@@ -1255,25 +1268,25 @@ class ps_ptr {
     int32_t special_index_of(const char* needle, uint32_t needle_length, uint32_t max_length) const {
         static_assert(std::is_same_v<T, char>, "index_of is only valid for ps_ptr<char>");
         if (!mem || !get()) {
-            log_e("index_of: No valid buffer data");
+            printf("[%s:%i]" ANSI_ESC_RED " index_of: No valid buffer data" ANSI_ESC_RESET "\n", __FILE__, __LINE__);
             return -1;
         }
         if (!needle || needle_length == 0) {
-            log_e("index_of: Invalid needle (null or empty)");
+            printf("[%s:%i]" ANSI_ESC_RED " index_of: Invalid needle (null or empty)" ANSI_ESC_RESET "\n", __FILE__, __LINE__);
             return -1;
         }
         if (max_length < needle_length) {
-            log_e("index_of: max_length (%u) too short to find needle of length %u", max_length, needle_length);
+            printf("[%s:%i]" ANSI_ESC_RED " index_of: max_length (%lu) too short to find needle of length %lu" ANSI_ESC_RESET "\n", __FILE__, __LINE__, max_length, needle_length);
             return -1;
         }
         const char* data = get();
         for (uint32_t i = 0; i <= max_length - needle_length; ++i) {
             if (std::memcmp(data + i, needle, needle_length) == 0) {
-                // log_i("index_of: Found needle at offset %u", i);
+                // printf("index_of: Found needle at offset %u\n", i);
                 return static_cast<int32_t>(i);
             }
         }
-        log_d("index_of: Needle not found within %lu bytes", max_length);
+        printf("[%s:%i]" ANSI_ESC_YELLOW " index_of: Needle not found within %lu bytes" ANSI_ESC_RESET "\n", __FILE__, __LINE__, max_length);
         return -1;
     }
     template <typename U = T>
@@ -1292,17 +1305,17 @@ class ps_ptr {
         static_assert(std::is_same_v<T, char>, "last_special_index_of is only valid for ps_ptr<char>");
 
         if (!mem || !get()) {
-            log_e("last_special_index_of: No valid buffer data");
+            printf("[%s:%i]" ANSI_ESC_RED " last_special_index_of: No valid buffer data" ANSI_ESC_RESET "\n", __FILE__, __LINE__);
             return -1;
         }
 
         if (!needle || needle_length == 0) {
-            log_e("last_special_index_of: Invalid needle (null or empty)");
+            printf("[%s:%i]" ANSI_ESC_RED " last_special_index_of: Invalid needle (null or empty)" ANSI_ESC_RESET "\n", __FILE__, __LINE__);
             return -1;
         }
 
         if (max_length < needle_length) {
-            log_e("last_special_index_of: max_length (%u) too short to find needle of length %u", max_length, needle_length);
+            printf("[%s:%i]" ANSI_ESC_RED " last_special_index_of: max_length (%lu) too short to find needle of length %lu" ANSI_ESC_RESET "\n", __FILE__, __LINE__, max_length, needle_length);
             return -1;
         }
 
@@ -1313,7 +1326,7 @@ class ps_ptr {
             if (std::memcmp(data + i, needle, needle_length) == 0) { return i; }
         }
 
-        log_d("last_special_index_of: Needle not found within %lu bytes", max_length);
+        printf("[%s:%i]" ANSI_ESC_YELLOW " last_special_index_of: Needle not found within %lu bytes" ANSI_ESC_RESET "\n", __FILE__, __LINE__, max_length);
         return -1;
     }
 
@@ -1759,7 +1772,7 @@ class ps_ptr {
     // ps_ptr<char> jsonIn, decoded;
     // jsonIn.assign("\\u041f\\u0440\\u0438\\u0432\\u0435\\u0442"); // Привет
     // decoded.unicodeToUTF8(jsonIn.get());
-    // log_i("%s", decoded.get()); // shows: Привет
+    // printf("%s\n", decoded.get()); // shows: Привет
 
     void unicodeToUTF8(const char* src) {
         this->clear();
@@ -1814,7 +1827,7 @@ class ps_ptr {
     // ps_ptr<char> html, utf8;
     // html.assign("Hello%20World");
     // utf8.unicodeToUTF8(html.get());
-    // log_i("%s", utf8.get()); // shows: Hallo World
+    // printf("%s\n", utf8.get()); // shows: Hallo World
 
     void htmlToUTF8(const char* src) {
         this->clear();
@@ -2102,7 +2115,7 @@ class ps_ptr {
         static_assert(std::is_same_v<T, char>, "toFloat() is only valid for ps_ptr<char>");
 
         if (!mem || !get()) {
-            log_e("toFloat: No valid string data");
+            printf("[%s:%i]" ANSI_ESC_RED " toFloat: No valid string data" ANSI_ESC_RESET "\n", __FILE__, __LINE__);
             return 0.0f;
         }
 
@@ -2110,7 +2123,7 @@ class ps_ptr {
 
         // no leading spaces
         if (std::isspace(static_cast<unsigned char>(*str))) {
-            log_e("toFloat: Leading whitespace is not allowed in '%s'", str);
+            printf("[%s:%i]" ANSI_ESC_RED " toFloat: Leading whitespace is not allowed in '%s'" ANSI_ESC_RESET "\n", __FILE__, __LINE__, str);
             return 0.0f;
         }
 
@@ -2121,25 +2134,25 @@ class ps_ptr {
 
         // is not a number
         if (end == str) {
-            log_e("toFloat: Invalid numeric value '%s'", str);
+            printf("[%s:%i]" ANSI_ESC_RED " toFloat: Invalid numeric value '%s'" ANSI_ESC_RESET "\n", __FILE__, __LINE__, str);
             return 0.0f;
         }
 
         // no other chars backwards
         if (*end != '\0') {
-            log_e("toFloat: Invalid character '%c' in '%s'", *end, str);
+            printf("[%s:%i]" ANSI_ESC_RED " toFloat: Invalid character '%c' in '%s'" ANSI_ESC_RESET "\n", __FILE__, __LINE__, *end, str);
             return 0.0f;
         }
 
         // Overflow / Underflow
         if (errno == ERANGE) {
-            log_e("toFloat: Value out of range '%s'", str);
+            printf("[%s:%i]" ANSI_ESC_RED " toFloat: Value out of range '%s'" ANSI_ESC_RESET "\n", __FILE__, __LINE__, str);
             return 0.0f;
         }
 
         // NaN and Infinity are not allowed
         if (!std::isfinite(value)) {
-            log_e("toFloat: Non-finite value '%s'", str);
+            printf("[%s:%i]" ANSI_ESC_RED " toFloat: Non-finite value '%s'" ANSI_ESC_RESET "\n", __FILE__, __LINE__, str);
             return 0.0f;
         }
         return value;
@@ -2155,12 +2168,12 @@ class ps_ptr {
     void big_endian(const uint8_t* data, uint8_t size) {
         static_assert(std::is_same_v<T, char>, "big_endian is only valid for ps_ptr<char>");
         if (!data || size == 0) {
-            log_e("big_endian: Invalid input (data is null or size is 0)");
+            printf("[%s:%i]" ANSI_ESC_RED " big_endian: Invalid input (data is null or size is 0)" ANSI_ESC_RESET "\n", __FILE__, __LINE__);
             assign("0x0");
             return;
         }
         if (size > 8) {
-            log_e("big_endian: Size %u exceeds 8 bytes, truncating to 8", size);
+            printf("[%s:%i]" ANSI_ESC_RED " big_endian: Size %u exceeds 8 bytes, truncating to 8" ANSI_ESC_RESET "\n", __FILE__, __LINE__, size);
             size = 8;
         }
         uint64_t result = 0;
@@ -2179,12 +2192,12 @@ class ps_ptr {
     void little_endian(const uint8_t* data, uint8_t size) {
         static_assert(std::is_same_v<T, char>, "little_endian is only valid for ps_ptr<char>");
         if (!data || size == 0) {
-            log_e("little_endian: Invalid input (data is null or size is 0)");
+            printf("[%s:%i]" ANSI_ESC_RED " little_endian: Invalid input (data is null or size is 0)" ANSI_ESC_RESET "\n", __FILE__, __LINE__);
             assign("0x0");
             return;
         }
         if (size > 8) {
-            log_e("little_endian: Size %u exceeds 8 bytes, truncating to 8", size);
+            printf("[%s:%i]" ANSI_ESC_RED " little_endian: Size %u exceeds 8 bytes, truncating to 8" ANSI_ESC_RESET "\n", __FILE__, __LINE__, size);
             size = 8;
         }
         uint64_t result = 0;
@@ -2306,7 +2319,7 @@ class ps_ptr {
         if (pos < len)
             str[pos] = '\0';
         else
-            log_e("truncate pos %i out of length %i", pos, len);
+            printf("[%s:%i]" ANSI_ESC_RED " truncate pos %i out of length %i" ANSI_ESC_RESET "\n", __FILE__, __LINE__, pos, len);
     }
     // —————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
     // 📌📌📌  R E M O V E _ P R E F I X   📌📌📌
@@ -2368,12 +2381,12 @@ class ps_ptr {
 
     void shift_left(int n) {
         if (!mem || allocated_size == 0) {
-            printf("Error: No allocated memory or invalid buffer\n");
+            printf("[%s:%i]" ANSI_ESC_RED " Error: No allocated memory or invalid buffer" ANSI_ESC_RESET "\n", __FILE__, __LINE__);
             return;
         }
 
         if (n < 0 || static_cast<std::size_t>(n) > allocated_size) {
-            printf("Error: Invalid shift amount %d, allocated_size=%zu\n", n, allocated_size);
+            printf("[%s:%i]" ANSI_ESC_RED " Error: Invalid shift amount %d, allocated_size=%zu" ANSI_ESC_RESET "\n", __FILE__, __LINE__, n, allocated_size);
             return;
         }
 
@@ -2499,13 +2512,13 @@ class ps_ptr {
 
     void hex_dump(uint16_t n = UINT16_MAX) {
         if (!valid()) {
-            printf("hex_dump: invalid buffer\n");
+            printf("[%s:%i]" ANSI_ESC_RED " hex_dump: invalid buffer" ANSI_ESC_RESET "\n", __FILE__, __LINE__);
             return;
         }
 
         if (allocated_size < n) n = allocated_size;
         if (n == 0) {
-            printf("hex_dump: no data\n");
+            printf("[%s:%i]" ANSI_ESC_YELLOW " hex_dump: no data" ANSI_ESC_RESET "\n", __FILE__, __LINE__);
             return;
         }
 
@@ -2605,7 +2618,7 @@ class ps_ptr {
     // Safe operator[] with logging
     T& operator[](std::size_t index) noexcept {
         if (index >= allocated_size) {
-            log_e("[%s:%i] ps_ptr[]: Index %zu out of bounds (size = %zu, name = %s)", __FILE__, __LINE__, index, allocated_size, name ? name : "unnamed");
+            printf("[%s:%i]" ANSI_ESC_RED " ps_ptr[]: Index %zu out of bounds (size = %zu, name = %s)", __FILE__, __LINE__, index, allocated_size, name ? name : "unnamed");
             return dummy; // Access allowed, but ineffective
         }
         return mem[index];
@@ -2613,7 +2626,7 @@ class ps_ptr {
 
     const T& operator[](std::size_t index) const noexcept {
         if (index >= allocated_size) {
-            log_e("[%s:%i] ps_ptr[]: Index %zu out of bounds (size = %zu, name = %s)", __FILE__, __LINE__, index, allocated_size, name ? name : "unnamed");
+            printf("[%s:%i]" ANSI_ESC_RED " [%s:%i] ps_ptr[]: Index %zu out of bounds (size = %zu, name = %s)", __FILE__, __LINE__, index, allocated_size, name ? name : "unnamed");
             return dummy;
         }
         return mem[index];
@@ -3203,15 +3216,15 @@ template <typename T> class ps_struct_ptr {
         }
         if (new_name) {
             std::size_t len = std::strlen(new_name) + 1;
-            if (psramFound()) {
-                name = static_cast<char*>(ps_malloc(len));
+            if (esp_psram_is_initialized()) {
+                name = static_cast<char*>(heap_caps_malloc(len, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
             } else {
                 name = static_cast<char*>(malloc(len));
             }
             if (name) {
                 std::memcpy(name, new_name, len);
             } else {
-                printf("OOM: failed to allocate %zu bytes for name %s\n", len, new_name);
+                printf("[%s:%i]" ANSI_ESC_RED " OOM: failed to allocate %zu bytes for name %s" ANSI_ESC_RESET "\n", __FILE__, __LINE__, len, new_name);
             }
         }
     }
@@ -3225,9 +3238,9 @@ template <typename T> class ps_struct_ptr {
 
     ~ps_struct_ptr() { // destructor
         if (mem) {
-            log_w("Destructor called for %s: Freeing %zu bytes at %p", name ? name : "unnamed", sizeof(T), mem.get());
+            printf("[%s:%i]" ANSI_ESC_YELLOW " Destructor called for %s: Freeing %zu bytes at %p" ANSI_ESC_RESET "\n", __FILE__, __LINE__, name ? name : "unnamed", sizeof(T), mem.get());
         } else {
-            log_w("Destructor called for %s: No memory to free.", name ? name : "unnamed");
+            printf("[%s:%i]" ANSI_ESC_YELLOW " Destructor called for %s: No memory to free." ANSI_ESC_RESET "\n", __FILE__, __LINE__, name ? name : "unnamed");
         }
         if (name) {
             free(name);
@@ -3263,15 +3276,15 @@ template <typename T> class ps_struct_ptr {
         reset();
         if (name_str) { set_name(name_str); }
         void* raw_mem = nullptr;
-        if (psramFound()) {
-            raw_mem = ps_malloc(sizeof(T));
+        if (esp_psram_is_initialized()) {
+            raw_mem = heap_caps_malloc(sizeof(T), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
         } else {
             raw_mem = malloc(sizeof(T));
         }
         if (raw_mem) {
             mem.reset(new (raw_mem) T());
         } else {
-            printf("OOM: failed to allocate %zu bytes for %s\n", sizeof(T), name ? name : (name_str ? name_str : "unnamed"));
+            printf("[%s:%i]" ANSI_ESC_RED " OOM: failed to allocate %zu bytes for %s" ANSI_ESC_RESET "\n", __FILE__, __LINE__, sizeof(T), name ? name : (name_str ? name_str : "unnamed"));
         }
     }
 
@@ -3281,15 +3294,15 @@ template <typename T> class ps_struct_ptr {
         reset();
         if (name_str) { set_name(name_str); }
         void* raw_mem = nullptr;
-        if (psramFound()) {
-            raw_mem = ps_calloc(1, sizeof(T));
+        if (esp_psram_is_initialized()) {
+            raw_mem = heap_caps_calloc(1, sizeof(T), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
         } else {
             raw_mem = calloc(1, sizeof(T));
         }
         if (raw_mem) {
             mem.reset(static_cast<T*>(raw_mem));
         } else {
-            printf("OOM: failed to allocate %zu bytes for %s\n", sizeof(T), name ? name : (name_str ? name_str : "unnamed"));
+            printf("[%s:%i]" ANSI_ESC_RED " OOM: failed to allocate %zu bytes for %s" ANSI_ESC_RESET "\n", __FILE__, __LINE__, sizeof(T), name ? name : (name_str ? name_str : "unnamed"));
         }
     }
 
@@ -3330,8 +3343,8 @@ template <typename T> class ps_struct_ptr {
         if (text) {
             std::size_t len = strlen(text) + 1;
             char*       p = nullptr;
-            if (psramFound()) { // Check at the runtime whether PSRAM is available
-                p = static_cast<char*>(ps_malloc(len));
+            if (esp_psram_is_initialized()) { // Check at the runtime whether PSRAM is available
+                p = static_cast<char*>(heap_caps_malloc(len, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
             } else {
                 p = static_cast<char*>(malloc(len));
             }
@@ -3372,7 +3385,7 @@ template <typename... Args> inline void free_fields(Args&... fields) {
 // —————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
 // 📌📌📌   2 D  A R R A Y   📌📌📌
 //
-// 2D Array in PSRAM with Bounds-Check, log_e and reset()
+// 2D Array in PSRAM with Bounds-Check, printf() and reset()
 //
 // ps_array2d<int32_t> s_samples; // standard constructor
 // s_samples.alloc(2, 1152);      // mem alloc for [2][1152]
@@ -3406,15 +3419,15 @@ template <typename T> class ps_array2d {
         }
         if (new_name) {
             std::size_t len = std::strlen(new_name) + 1;
-            if (psramFound()) {
-                name = static_cast<char*>(ps_malloc(len));
+            if (esp_psram_is_initialized()) {
+                name = static_cast<char*>(heap_caps_malloc(len, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
             } else {
                 name = static_cast<char*>(malloc(len));
             }
             if (name) {
                 std::memcpy(name, new_name, len);
             } else {
-                printf("OOM: failed to allocate %zu bytes for name %s\n", len, new_name);
+                printf("[%s:%i]" ANSI_ESC_RED " OOM: failed to allocate %zu bytes for name %s" ANSI_ESC_RESET "\n", __FILE__, __LINE__, len, new_name);
             }
         }
     }
@@ -3429,9 +3442,9 @@ template <typename T> class ps_array2d {
     // Destruktor
     ~ps_array2d() {
         if (mem) {
-            log_w("Destructor called for %s: Freeing %zu bytes at %p", name ? name : "unnamed", rows * cols * sizeof(T), mem.get());
+            printf("[%s:%i]" ANSI_ESC_YELLOW " Destructor called for %s: Freeing %zu bytes at %p" ANSI_ESC_RESET "\n", __FILE__, __LINE__, name ? name : "unnamed", rows * cols * sizeof(T), mem.get());
         } else {
-            log_w("Destructor called for %s: No memory to free.", name ? name : "unnamed");
+            printf("[%s:%i]" ANSI_ESC_YELLOW " Destructor called for %s: No memory to free." ANSI_ESC_RESET "\n", __FILE__, __LINE__, name ? name : "unnamed");
         }
         if (name) {
             free(name);
@@ -3480,13 +3493,13 @@ template <typename T> class ps_array2d {
         cols = c;
         size_t total_size = rows * cols * sizeof(T);
         total_size = (total_size + 15) & ~15; // Align to 16 bytes
-        if (psramFound() && usePSRAM) {
-            mem.reset(static_cast<T*>(ps_malloc(total_size)));
+        if (esp_psram_is_initialized() && usePSRAM) {
+            mem.reset(static_cast<T*>(heap_caps_malloc(total_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)));
         } else {
             mem.reset(static_cast<T*>(malloc(total_size)));
         }
         if (!mem) {
-            printf("OOM: failed to allocate %zu bytes for %s\n", total_size, name ? name : (alloc_name ? alloc_name : "unnamed"));
+            printf("[%s:%i]" ANSI_ESC_RED " OOM: failed to allocate %zu bytes for %s" ANSI_ESC_RESET "\n", __FILE__, __LINE__, total_size, name ? name : (alloc_name ? alloc_name : "unnamed"));
             rows = 0;
             cols = 0;
         }
@@ -3502,15 +3515,15 @@ template <typename T> class ps_array2d {
         size_t total_size = rows * cols * sizeof(T);
         total_size = (total_size + 15) & ~15; // Align to 16 bytes
         void* raw_mem = nullptr;
-        if (psramFound() && usePSRAM) {
-            raw_mem = ps_calloc(1, total_size);
+        if (esp_psram_is_initialized() && usePSRAM) {
+            raw_mem = heap_caps_calloc(1, total_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
         } else {
             raw_mem = calloc(1, total_size);
         }
         if (raw_mem) {
             mem.reset(static_cast<T*>(raw_mem));
         } else {
-            printf("OOM: failed to allocate %zu bytes for %s\n", total_size, name ? name : (alloc_name ? alloc_name : "unnamed"));
+            printf("[%s:%i]" ANSI_ESC_RED " OOM: failed to allocate %zu bytes for %s" ANSI_ESC_RESET "\n", __FILE__, __LINE__, total_size, name ? name : (alloc_name ? alloc_name : "unnamed"));
             rows = 0;
             cols = 0;
         }
@@ -3549,7 +3562,7 @@ template <typename T> class ps_array2d {
 //
 // 📌📌📌   3 D  A R R A Y   📌📌📌
 //
-// 3D Array in PSRAM with Bounds-Check, log_e and reset()
+// 3D Array in PSRAM with Bounds-Check, printf() and reset()
 //
 // ps_array3d<int32_t> s_sbsample;
 // s_sbsample.alloc(2, 36, 32);
@@ -3585,15 +3598,15 @@ template <typename T> class ps_array3d {
         }
         if (new_name) {
             std::size_t len = std::strlen(new_name) + 1;
-            if (psramFound()) {
-                name = static_cast<char*>(ps_malloc(len));
+            if (esp_psram_is_initialized()) {
+                name = static_cast<char*>(heap_caps_malloc(len, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
             } else {
                 name = static_cast<char*>(malloc(len));
             }
             if (name) {
                 std::memcpy(name, new_name, len);
             } else {
-                printf("OOM: failed to allocate %zu bytes for name %s\n", len, new_name);
+                printf("[%s:%i]" ANSI_ESC_RED " OOM: failed to allocate %zu bytes for name %s" ANSI_ESC_RESET "\n", __FILE__, __LINE__, len, new_name);
             }
         }
     }
@@ -3608,9 +3621,9 @@ template <typename T> class ps_array3d {
     // Destruktor
     ~ps_array3d() {
         if (mem) {
-            log_w("Destructor called for %s: Freeing %zu bytes at %p", name ? name : "unnamed", dim1 * dim2 * dim3 * sizeof(T), mem.get());
+            printf("[%s:%i]" ANSI_ESC_YELLOW " Destructor called for %s: Freeing %zu bytes at %p" ANSI_ESC_RESET "\n", __FILE__, __LINE__, name ? name : "unnamed", dim1 * dim2 * dim3 * sizeof(T), mem.get());
         } else {
-            log_w("Destructor called for %s: No memory to free.", name ? name : "unnamed");
+            printf("[%s:%i]" ANSI_ESC_YELLOW " Destructor called for %s: No memory to free." ANSI_ESC_RESET "\n", __FILE__, __LINE__, name ? name : "unnamed");
         }
         if (name) {
             free(name);
@@ -3664,13 +3677,13 @@ template <typename T> class ps_array3d {
         dim3 = d3;
         size_t total_size = dim1 * dim2 * dim3 * sizeof(T);
         total_size = (total_size + 15) & ~15; // Align to 16 bytes
-        if (psramFound() && usePSRAM) {
-            mem.reset(static_cast<T*>(ps_malloc(total_size)));
+        if (esp_psram_is_initialized() && usePSRAM) {
+            mem.reset(static_cast<T*>(heap_caps_malloc(total_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)));
         } else {
             mem.reset(static_cast<T*>(malloc(total_size)));
         }
         if (!mem) {
-            printf("OOM: failed to allocate %zu bytes for %s\n", total_size, name ? name : (alloc_name ? alloc_name : "unnamed"));
+            printf("[%s:%i]" ANSI_ESC_RED " OOM: failed to allocate %zu bytes for %s" ANSI_ESC_RESET "\n", __FILE__, __LINE__, total_size, name ? name : (alloc_name ? alloc_name : "unnamed"));
             dim1 = 0;
             dim2 = 0;
             dim3 = 0;
@@ -3688,15 +3701,15 @@ template <typename T> class ps_array3d {
         size_t total_size = dim1 * dim2 * dim3 * sizeof(T);
         total_size = (total_size + 15) & ~15; // Align to 16 bytes
         void* raw_mem = nullptr;
-        if (psramFound() && usePSRAM) {
-            raw_mem = ps_calloc(1, total_size);
+        if (esp_psram_is_initialized() && usePSRAM) {
+            raw_mem = heap_caps_calloc(1, total_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
         } else {
             raw_mem = calloc(1, total_size);
         }
         if (raw_mem) {
             mem.reset(static_cast<T*>(raw_mem));
         } else {
-            printf("OOM: failed to allocate %zu bytes for %s\n", total_size, name ? name : (alloc_name ? alloc_name : "unnamed"));
+            printf("[%s:%i]" ANSI_ESC_RED " OOM: failed to allocate %zu bytes for %s" ANSI_ESC_RESET "\n", __FILE__, __LINE__, total_size, name ? name : (alloc_name ? alloc_name : "unnamed"));
             dim1 = 0;
             dim2 = 0;
             dim3 = 0;
