@@ -1,6 +1,6 @@
 #pragma once
-
-#include "../Audio.h"
+#include "stdint-gcc.h"
+#include <limits.h>
 
 class RangeDecoder {
 public:
