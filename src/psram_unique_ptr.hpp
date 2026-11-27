@@ -2,33 +2,16 @@
 
 #include "esp_psram.h"
 #include "esp_heap_caps.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
-#include <algorithm>
-#include <cerrno>
 #include <cmath>
-#include <cstdio>
 #include <cstring>
 #include <memory>
 #include <span>
-#include <stdexcept>
-#include <type_traits>
-#include <utility>
 #include <vector>
-#include <stdint-gcc.h>
-#include <stddef.h>
-#include <stdlib.h>
-#include <stdbool.h>
-#include <time.h>
-#include <locale>
-#include <optional>
-#include <functional>
-#include <libb64/cencode.h>
-#include <atomic>
-#include <charconv>
-#include <codecvt>
 #include <deque>
-
+#include <stddef.h>
+#include <atomic>
+#include <algorithm>
+#include <charconv>
 namespace {
 #define ANSI_ESC_RESET   "\033[0m"
 #define ANSI_ESC_BLACK   "\033[30m"
